@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+
+# Environment variables (보안 주의!)
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
