@@ -3,10 +3,9 @@
 An EdTech platform leveraging public datasets and geospatial matching algorithms to connect local learners with community lifelong education ecosystems in Sejong City.
 
 
-## 📱 서비스 시연 영상
+## 📱 Service Demo
 
-![서비스 시연](./frontend/public/demo.gif)
----
+![Do-it Demo](./frontend/public/demo.gif)
 
 ## 🛠 Tech Stack & Architecture
 
