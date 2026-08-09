@@ -3,6 +3,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
+const { GoogleGenAI } = require('@google/genai');
 require('dotenv').config();
 
 const app = express();
@@ -17,7 +18,15 @@ const io = new Server(server, {
   }
 });
 
+// 🤖 Gemini AI 클라이언트 설정
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || 'QVCjOPR2J%2BP2NePRZ0fC9TLrxl%2BBKlEnYiAflep17XKryp6XZM3xid1Bxz0ZH5XUHmL%2Bxh1QfpOYABsImEOJKg%3D%3D';
+
+// 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
+app.get('/', (req, res) => {
+  res.send('🚀 Do-it Backend Server is Running On Render!');
+});
 
 // ⚓ 부산 평생교육 강좌 연동 API
 app.get('/api/v1/locations/search', async (req, res) => {
@@ -66,6 +75,38 @@ app.get('/api/v1/locations/search', async (req, res) => {
     if (target && target !== '전체') filtered = filtered.filter(item => item.target === target);
 
     return res.json({ status: 'success', count: filtered.length, data: filtered });
+  }
+});
+
+// 🤖 [NEW] Gemini AI 맞춤 추천 엔드포인트
+app.post('/api/v1/recommend/ai', async (req, res) => {
+  const { userPrompt, courses, lang = 'ko' } = req.body;
+
+  try {
+    const isEn = lang === 'en';
+
+    const systemInstruction = isEn
+      ? `You are a helpful AI assistant for Busan Lifelong Learning Service. Analyze the user's intent ("${userPrompt}") and recommend 1 or 2 best matching courses from the provided course list. Reply concisely in English with bullet points explaining WHY you recommended them.`
+      : `너는 부산광역시 평생교육 서비스의 친절한 AI 안내원이야. 사용자의 질문("${userPrompt}")을 분석해서 제공된 강좌 목록 중에서 가장 적합한 강좌 1~2개를 추천해줘. 추천 이유를 명확하고 친절하게 한국어로 작성해줘.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: `User Question: "${userPrompt}"\nAvailable Courses: ${JSON.stringify(courses)}` }]
+        }
+      ],
+      config: { systemInstruction }
+    });
+
+    return res.json({ status: 'success', recommendation: response.text });
+  } catch (error) {
+    console.error('Gemini API 오류:', error.message);
+    return res.status(500).json({ 
+      status: 'fail', 
+      message: lang === 'en' ? 'Failed to get AI recommendation.' : 'AI 추천을 불러오는 중 오류가 발생했습니다.' 
+    });
   }
 });
 
