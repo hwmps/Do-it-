@@ -21,7 +21,7 @@ const io = new Server(server, {
 // 🤖 Gemini AI 클라이언트 설정
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || 'QVCjOPR2J%2BP2NePRZ0fC9TLrxl%2BBKlEnYiAflep17XKryp6XZM3xid1Bxz0ZH5XUHmL%2Bxh1QfpOYABsImEOJKg%3D%3D';
+const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
 app.get('/', (req, res) => {
@@ -171,6 +171,13 @@ app.post('/api/v1/auth/login', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 소켓 및 백엔드 서버 실행 완료: http://localhost:${PORT}`);
-});
+
+// 로컬에서 직접 실행할 때만 서버 시작
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`🚀 백엔드 서버 실행 완료: http://localhost:${PORT}`);
+  });
+}
+
+// Lambda에서 사용할 Express app
+module.exports = app;
