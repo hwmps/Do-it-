@@ -90,7 +90,7 @@ app.post('/api/v1/recommend/ai', async (req, res) => {
       : `너는 부산광역시 평생교육 서비스의 친절한 AI 안내원이야. 사용자의 질문("${userPrompt}")을 분석해서 제공된 강좌 목록 중에서 가장 적합한 강좌 1~2개를 추천해줘. 추천 이유를 명확하고 친절하게 한국어로 작성해줘.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: [
         {
           role: 'user',

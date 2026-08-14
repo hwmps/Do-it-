@@ -1,118 +1,249 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
+import React, { useState } from 'react';
 
-// 🌐 채팅창 전용 다국어 사전
-const chatTranslations = {
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL ||
+  (process.env.NODE_ENV === 'production'
+    ? 'https://k5235hpbt6.execute-api.ap-southeast-2.amazonaws.com'
+    : 'http://localhost:5000');
+
+const translations = {
   ko: {
-    chatTitle: '💬 실시간 Q&A 채팅방',
-    activeUsers: '접속자',
-    noMessages: '첫 메시지를 작성해 보세요!',
-    placeholder: '궁금한 점을 물어보세요...',
-    sendBtn: '전송',
-    userPrefix: '수강생',
+    title: '✨ AI 강좌 도우미',
+    description: '이 강좌가 나에게 맞는지 AI에게 물어보세요.',
+    placeholder: '예: 코딩 초보자인데 이 강좌가 저한테 맞을까요?',
+    send: 'AI에게 물어보기',
+    loading: 'AI가 답변을 생각하고 있어요...',
+    error: 'AI 답변을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    empty: '궁금한 내용을 입력해 주세요.',
+    you: '나',
+    ai: 'Do-it AI',
   },
   en: {
-    chatTitle: '💬 Real-Time Q&A Chat',
-    activeUsers: 'Active',
-    noMessages: 'Be the first to leave a message!',
-    placeholder: 'Ask your questions...',
-    sendBtn: 'Send',
-    userPrefix: 'Student',
-  }
+    title: '✨ AI Course Assistant',
+    description: 'Ask AI whether this course is a good fit for you.',
+    placeholder: 'e.g. Is this course suitable for a coding beginner?',
+    send: 'Ask AI',
+    loading: 'AI is thinking...',
+    error: 'Failed to load the AI response. Please try again.',
+    empty: 'Please enter a question.',
+    you: 'You',
+    ai: 'Do-it AI',
+  },
 };
 
 export default function CourseChat({ course, lang = 'ko' }) {
-  // lang 값에 맞춰 언어 설정 (기본값 'ko')
-  const t = chatTranslations[lang] || chatTranslations.ko;
+  const t = translations[lang] || translations.ko;
 
-  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [userCount, setUserCount] = useState(1);
-  const [username] = useState(() => `${t.userPrefix}_${Math.floor(Math.random() * 1000)}`);
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const socketRef = useRef(null);
-  const messagesEndRef = useRef(null);
-
-  useEffect(() => {
-    if (!course) return;
-
-    socketRef.current = io('http://localhost:5000');
-
-    // 1. 방 입장
-    socketRef.current.emit('join_room', { courseId: course.id, username });
-
-    // 2. 메시지 내역 불러오기
-    socketRef.current.on('init_messages', (history) => {
-      setMessages(history);
-    });
-
-    // 3. 동접자 수 수신
-    socketRef.current.on('update_user_count', (count) => {
-      setUserCount(count);
-    });
-
-    // 4. 실시간 새 메시지 수신
-    socketRef.current.on('new_message', (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
-
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
-    };
-  }, [course, username]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const sendMessage = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim() || !socketRef.current) return;
 
-    socketRef.current.emit('send_message', {
-      courseId: course.id,
-      text: input,
-      sender: username
-    });
+    const trimmedInput = input.trim();
 
+    if (!trimmedInput) {
+      alert(t.empty);
+      return;
+    }
+
+    const userMessage = {
+      role: 'user',
+      text: trimmedInput,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/recommend/ai`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userPrompt: trimmedInput,
+            courses: [course],
+            lang,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || data.status !== 'success') {
+        throw new Error(data.message || 'AI request failed');
+      }
+
+      const aiMessage = {
+        role: 'ai',
+        text: data.recommendation,
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('AI recommendation error:', error);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: t.error,
+          isError: true,
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div style={{ border: '2px solid #ffedd5', borderRadius: '12px', padding: '16px', background: '#fff7ed', marginTop: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <h4 style={{ margin: 0, color: '#7c2d12', fontSize: '15px', fontWeight: 'bold' }}>{t.chatTitle}</h4>
-        <span style={{ background: '#f97316', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
-          🟢 {t.activeUsers} {userCount}{lang === 'ko' ? '명' : ''}
-        </span>
+    <div
+      style={{
+        border: '2px solid #ffedd5',
+        borderRadius: '14px',
+        padding: '16px',
+        background: '#fff7ed',
+        marginTop: '12px',
+      }}
+    >
+      <div style={{ marginBottom: '14px' }}>
+        <h4
+          style={{
+            margin: '0 0 5px 0',
+            color: '#7c2d12',
+            fontSize: '16px',
+            fontWeight: 'bold',
+          }}
+        >
+          {t.title}
+        </h4>
+
+        <p
+          style={{
+            margin: 0,
+            color: '#9a3412',
+            fontSize: '12px',
+          }}
+        >
+          {t.description}
+        </p>
       </div>
 
-      <div style={{ height: '180px', overflowY: 'auto', border: '1px solid #fed7aa', padding: '10px', marginBottom: '10px', borderRadius: '8px', background: '#fff' }}>
-        {messages.length === 0 ? (
-          <p style={{ color: '#9a3412', fontSize: '12px', textAlign: 'center', margin: '70px 0 0 0' }}>{t.noMessages}</p>
-        ) : (
-          messages.map((msg) => (
-            <div key={msg.id || Math.random()} style={{ marginBottom: '8px', fontSize: '13px' }}>
-              <span style={{ fontWeight: 'bold', color: msg.sender === username ? '#ea580c' : '#7c2d12' }}>[{msg.sender}]</span>: {msg.text}
-              <span style={{ fontSize: '10px', color: '#a3a3a3', marginLeft: '6px' }}>{msg.time}</span>
+      {messages.length > 0 && (
+        <div
+          style={{
+            maxHeight: '280px',
+            overflowY: 'auto',
+            background: '#fff',
+            border: '1px solid #fed7aa',
+            borderRadius: '10px',
+            padding: '12px',
+            marginBottom: '12px',
+          }}
+        >
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              style={{
+                marginBottom:
+                  index === messages.length - 1 ? '0' : '12px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  color:
+                    message.role === 'user'
+                      ? '#ea580c'
+                      : '#7c2d12',
+                  marginBottom: '4px',
+                }}
+              >
+                {message.role === 'user' ? t.you : t.ai}
+              </div>
+
+              <div
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: '1.6',
+                  fontSize: '13px',
+                  color: message.isError
+                    ? '#b91c1c'
+                    : '#431407',
+                  background:
+                    message.role === 'user'
+                      ? '#fff7ed'
+                      : '#fffbeb',
+                  borderRadius: '8px',
+                  padding: '9px 11px',
+                }}
+              >
+                {message.text}
+              </div>
             </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+          ))}
 
-      <form onSubmit={sendMessage} style={{ display: 'flex', gap: '8px' }}>
+          {isLoading && (
+            <div
+              style={{
+                marginTop: '10px',
+                color: '#ea580c',
+                fontSize: '12px',
+                fontWeight: 'bold',
+              }}
+            >
+              {t.loading}
+            </div>
+          )}
+        </div>
+      )}
+
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: 'flex',
+          gap: '8px',
+        }}
+      >
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={t.placeholder}
-          style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #fed7aa', outline: 'none', fontSize: '13px' }}
+          disabled={isLoading}
+          style={{
+            flex: 1,
+            padding: '11px 12px',
+            borderRadius: '8px',
+            border: '1px solid #fed7aa',
+            outline: 'none',
+            fontSize: '13px',
+            backgroundColor: '#fff',
+          }}
         />
-        <button type="submit" style={{ padding: '10px 16px', background: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
-          {t.sendBtn}
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          style={{
+            padding: '10px 15px',
+            background: isLoading ? '#fdba74' : '#f97316',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            cursor: isLoading ? 'not-allowed' : 'pointer',
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {t.send}
         </button>
       </form>
     </div>
