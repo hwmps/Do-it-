@@ -4,6 +4,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
 const { GoogleGenAI } = require('@google/genai');
+const { OAuth2Client } = require('google-auth-library');
+const jwt = require('jsonwebtoken');
+
 require('dotenv').config();
 
 const app = express();
@@ -20,7 +23,7 @@ const io = new Server(server, {
 
 // 🤖 Gemini AI 클라이언트 설정
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
@@ -159,6 +162,77 @@ io.on('connection', (socket) => {
       io.to(`course_${socket.courseId}`).emit('update_user_count', roomUsers[courseId]);
     }
   });
+});
+// 🔐 Google 로그인 인증
+app.post('/api/v1/auth/google', async (req, res) => {
+  const { credential } = req.body;
+
+  
+
+  if (!credential) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Google credential이 필요합니다.'
+    });
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    console.error('GOOGLE_CLIENT_ID가 설정되지 않았습니다.');
+
+    return res.status(500).json({
+      status: 'fail',
+      message: 'Google 인증 설정이 완료되지 않았습니다.'
+    });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      return res.status(401).json({
+        status: 'fail',
+        message: '유효하지 않은 Google 토큰입니다.'
+      });
+    }
+
+    const user = {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture
+    };
+
+   const token = jwt.sign(
+  {
+    email: user.email
+  },
+  process.env.JWT_SECRET,
+  {
+    subject: user.id,
+    expiresIn: '1h',
+    issuer: 'do-it-api'
+  }
+);
+
+return res.json({
+  status: 'success',
+  token,
+  user
+});
+
+  } catch (error) {
+    console.error('Google 인증 실패:', error.message);
+
+    return res.status(401).json({
+      status: 'fail',
+      message: 'Google 인증에 실패했습니다.'
+    });
+  }
 });
 
 app.post('/api/v1/auth/login', (req, res) => {

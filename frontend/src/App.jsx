@@ -104,11 +104,45 @@ function LoginPage({ lang }) {
     }
   };
 
-  const handleGoogleSuccess = (credentialResponse) => {
-    localStorage.setItem('token', credentialResponse.credential);
-    localStorage.setItem('userEmail', 'Google User');
-    alert(lang === 'en' ? 'Google Login Successful!' : '구글 로그인에 성공했습니다!');
-    navigate('/');
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      setErrorMsg('');
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          credential: credentialResponse.credential
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.status !== 'success') {
+        throw new Error(data.message || 'Google authentication failed');
+      }
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('userEmail', data.user.email);
+
+      alert(
+        lang === 'en'
+          ? 'Google Login Successful!'
+          : '구글 로그인에 성공했습니다!'
+      );
+
+      navigate('/');
+    } catch (error) {
+      console.error('Google login error:', error);
+
+      setErrorMsg(
+        lang === 'en'
+          ? 'Google authentication failed.'
+          : '구글 인증에 실패했습니다.'
+      );
+    }
   };
 
   const handleGoogleError = () => {
