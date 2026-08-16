@@ -72,37 +72,9 @@ const translations = {
 };
 
 // 🔑 LoginPage 컴포넌트
-function LoginPage({ lang }) {
+function LoginPage({ lang, setLang }) {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.status === 'success') {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('userEmail', data.user.email);
-        alert(lang === 'en' ? 'Login Successful!' : '로그인에 성공했습니다!');
-        navigate('/');
-      } else {
-        setErrorMsg(data.message || (lang === 'en' ? 'Login failed.' : '로그인에 실패했습니다.'));
-      }
-    } catch (err) {
-      setErrorMsg(lang === 'en' ? 'Server connection error.' : '백엔드 서버 연동 오류!');
-    }
-  };
 
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
@@ -152,6 +124,42 @@ function LoginPage({ lang }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#fff7ed' }}>
       <div style={{ background: '#fff', padding: '40px', borderRadius: '24px', border: '1px solid #ffedd5', boxShadow: '0 8px 30px rgba(249,115,22,0.1)', width: '100%', maxWidth: '400px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '16px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setLang('ko');
+              localStorage.setItem('lang', 'ko');
+            }}
+            style={{
+              border: 'none',
+              background: lang === 'ko' ? '#ffedd5' : 'transparent',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              cursor: 'pointer'
+            }}
+          >
+            🇰🇷 한국어
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLang('en');
+              localStorage.setItem('lang', 'en');
+            }}
+            style={{
+              border: 'none',
+              background: lang === 'en' ? '#ffedd5' : 'transparent',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              cursor: 'pointer'
+            }}
+          >
+            🇺🇸 English
+          </button>
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
           <img src="/character.png" alt="character" style={{ width: '64px', height: '64px', objectFit: 'contain' }} />
           <h2 style={{ color: '#9a3412', fontSize: '26px', fontWeight: 'bold', margin: 0 }}>
@@ -177,46 +185,6 @@ function LoginPage({ lang }) {
             locale={lang === 'en' ? 'en' : 'ko'}
           />
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
-          <div style={{ flex: 1, height: '1px', backgroundColor: '#fed7aa' }}></div>
-          <span style={{ padding: '0 10px', fontSize: '12px', color: '#ea580c' }}>
-            {lang === 'en' ? 'or continue with email' : '또는 이메일로 로그인'}
-          </span>
-          <div style={{ flex: 1, height: '1px', backgroundColor: '#fed7aa' }}></div>
-        </div>
-
-        <form onSubmit={handleLogin}>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#7c2d12', marginBottom: '6px' }}>
-              {lang === 'en' ? 'Email' : '이메일'}
-            </label>
-            <input 
-              type="email" 
-              required 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@example.com"
-              style={{ width: '100%', padding: '12px', border: '1px solid #fed7aa', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }}
-            />
-          </div>
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#7c2d12', marginBottom: '6px' }}>
-              {lang === 'en' ? 'Password' : '비밀번호'}
-            </label>
-            <input 
-              type="password" 
-              required 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{ width: '100%', padding: '12px', border: '1px solid #fed7aa', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }}
-            />
-          </div>
-          <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
-            {lang === 'en' ? 'Sign In' : '로그인'}
-          </button>
-        </form>
 
         <button 
           onClick={() => navigate('/')} 
@@ -680,7 +648,7 @@ function MainPage({ lang, setLang }) {
 
 // 🚦 App 루트 컴포넌트
 function App() {
-  const [lang, setLang] = useState('ko');
+  const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ko');
 
   return (
     <Routes>

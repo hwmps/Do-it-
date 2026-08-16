@@ -235,13 +235,42 @@ return res.json({
   }
 });
 
-app.post('/api/v1/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  if (email && password) {
-    res.json({ status: 'success', token: 'mock-jwt-token-12345', user: { email } });
-  } else {
-    res.status(400).json({ status: 'fail', message: '이메일과 비밀번호를 입력해주세요.' });
+// 🔐 JWT 인증 미들웨어
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({
+      status: 'fail',
+      message: '인증 토큰이 필요합니다.'
+    });
   }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      issuer: 'do-it-api'
+    });
+
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      status: 'fail',
+      message: '유효하지 않거나 만료된 토큰입니다.'
+    });
+  }
+};
+
+// 👤 현재 로그인 사용자 확인
+app.get('/api/v1/auth/me', authenticateToken, (req, res) => {
+  return res.json({
+    status: 'success',
+    user: {
+      id: req.user.sub,
+      email: req.user.email
+    }
+  });
 });
 
 const PORT = process.env.PORT || 5000;
