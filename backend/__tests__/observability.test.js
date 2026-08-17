@@ -111,3 +111,39 @@ describe('Request Observability', () => {
     expect(serializedLogs).not.toContain('Authorization');
   });
 });
+
+describe('Request Metrics', () => {
+  test('emits request count, latency, and error metrics', async () => {
+    jest.clearAllMocks();
+
+    const app = express();
+    app.use(requestObservability);
+
+    app.get('/metrics-test', (req, res) => {
+      res.status(503).json({ status: 'fail' });
+    });
+
+    await request(app).get('/metrics-test');
+
+    expect(mockMetrics.addMetric).toHaveBeenCalledWith(
+      'RequestCount',
+      'Count',
+      1
+    );
+
+    expect(mockMetrics.addMetric).toHaveBeenCalledWith(
+      'RequestLatency',
+      'Milliseconds',
+      expect.any(Number)
+    );
+
+    expect(mockMetrics.addMetric).toHaveBeenCalledWith(
+      'ServerErrorCount',
+      'Count',
+      1
+    );
+
+    expect(mockMetrics.publishStoredMetrics)
+      .toHaveBeenCalledTimes(1);
+  });
+});

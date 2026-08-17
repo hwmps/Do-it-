@@ -7,6 +7,7 @@ const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const { requestObservability } = require('./middleware/requestObservability');
+const { logger } = require('./observability/logger');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -96,34 +97,126 @@ app.get('/api/v1/locations/search', async (req, res) => {
   }
 });
 
-// 🤖 [NEW] Gemini AI 맞춤 추천 엔드포인트
+// 🤖 Gemini AI 맞춤 추천 엔드포인트
 app.post('/api/v1/recommend/ai', async (req, res) => {
   const { userPrompt, courses, lang = 'ko' } = req.body;
 
+  if (
+    typeof userPrompt !== 'string' ||
+    !userPrompt.trim() ||
+    !Array.isArray(courses) ||
+    courses.length === 0
+  ) {
+    return res.status(400).json({
+      status: 'fail',
+      message:
+        lang === 'en'
+          ? 'A question and at least one course are required.'
+          : '질문과 강좌 정보가 필요합니다.'
+    });
+  }
+
+  const isEn = lang === 'en';
+
+  const systemInstruction = isEn
+    ? `You are a helpful AI assistant for Busan Lifelong Learning Service. Analyze the user's intent ("${userPrompt}") and recommend 1 or 2 best matching courses from the provided course list. Reply concisely in English with bullet points explaining WHY you recommended them.`
+    : `너는 부산광역시 평생교육 서비스의 친절한 AI 안내원이야. 사용자의 질문("${userPrompt}")을 분석해서 제공된 강좌 목록 중에서 가장 적합한 강좌 1~2개를 추천해줘. 추천 이유를 명확하고 친절하게 한국어로 작성해줘.`;
+
+  const promptText =
+    `User Question: "${userPrompt}"\n` +
+    `Available Courses: ${JSON.stringify(courses)}`;
+
+  const correlationId =
+    req.observability?.correlationId || null;
+
+  const payloadBytes = Buffer.byteLength(
+    promptText,
+    'utf8'
+  );
+
+  const startedAt = process.hrtime.bigint();
+
+  logger.info('Gemini request started', {
+    event: 'ai.request.started',
+    correlationId,
+    provider: 'gemini',
+    model: 'gemini-3.6-flash',
+    courseCount: courses.length,
+    payloadBytes
+  });
+
   try {
-    const isEn = lang === 'en';
-
-    const systemInstruction = isEn
-      ? `You are a helpful AI assistant for Busan Lifelong Learning Service. Analyze the user's intent ("${userPrompt}") and recommend 1 or 2 best matching courses from the provided course list. Reply concisely in English with bullet points explaining WHY you recommended them.`
-      : `너는 부산광역시 평생교육 서비스의 친절한 AI 안내원이야. 사용자의 질문("${userPrompt}")을 분석해서 제공된 강좌 목록 중에서 가장 적합한 강좌 1~2개를 추천해줘. 추천 이유를 명확하고 친절하게 한국어로 작성해줘.`;
-
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
       contents: [
         {
           role: 'user',
-          parts: [{ text: `User Question: "${userPrompt}"\nAvailable Courses: ${JSON.stringify(courses)}` }]
+          parts: [{ text: promptText }]
         }
       ],
-      config: { systemInstruction }
+      config: {
+        systemInstruction,
+        httpOptions: {
+          timeout: 20000
+        }
+      }
     });
 
-    return res.json({ status: 'success', recommendation: response.text });
+    const durationMs =
+      Number(process.hrtime.bigint() - startedAt) /
+      1_000_000;
+
+    logger.info('Gemini request completed', {
+      event: 'ai.request.completed',
+      correlationId,
+      provider: 'gemini',
+      model: 'gemini-3.6-flash',
+      durationMs: Number(durationMs.toFixed(2)),
+      outputChars: response.text?.length || 0
+    });
+
+    return res.json({
+      status: 'success',
+      recommendation: response.text
+    });
   } catch (error) {
-    console.error('Gemini API 오류:', error.message);
-    return res.status(500).json({ 
-      status: 'fail', 
-      message: lang === 'en' ? 'Failed to get AI recommendation.' : 'AI 추천을 불러오는 중 오류가 발생했습니다.' 
+    const durationMs =
+      Number(process.hrtime.bigint() - startedAt) /
+      1_000_000;
+
+    const errorDescription =
+      `${error?.name || ''} ${error?.message || ''}`;
+
+    const isTimeout =
+      /timeout|timed out|deadline/i.test(errorDescription);
+
+    const logData = {
+      event: 'ai.request.failed',
+      correlationId,
+      provider: 'gemini',
+      model: 'gemini-3.6-flash',
+      durationMs: Number(durationMs.toFixed(2)),
+      timeout: isTimeout,
+      errorName: error?.name || 'UnknownError',
+      upstreamStatus: error?.status || error?.code || null
+    };
+
+    if (isTimeout) {
+      logger.warn('Gemini request timed out', logData);
+    } else {
+      logger.error('Gemini request failed', logData);
+    }
+
+    return res.status(isTimeout ? 504 : 502).json({
+      status: 'fail',
+      message:
+        lang === 'en'
+          ? isTimeout
+            ? 'The AI service is taking too long. Please try again.'
+            : 'Failed to get AI recommendation.'
+          : isTimeout
+            ? 'AI 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.'
+            : 'AI 추천을 불러오는 중 오류가 발생했습니다.'
     });
   }
 });
