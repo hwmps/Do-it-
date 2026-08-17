@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import CourseChat from './components/CourseChat';
+import {
+  authenticatedFetch,
+  SessionExpiredError
+} from './api/apiClient';
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
@@ -105,7 +109,11 @@ function LoginPage({ lang, setLang }) {
           : '구글 로그인에 성공했습니다!'
       );
 
-      navigate('/');
+      const redirectTo =
+      sessionStorage.getItem('postLoginRedirect') || '/';
+
+    sessionStorage.removeItem('postLoginRedirect');
+    navigate(redirectTo);
     } catch (error) {
       console.error('Google login error:', error);
 
@@ -233,11 +241,7 @@ function MainPage({ lang, setLang }) {
 
     const loadFavorites = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/favorites`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+        const response = await authenticatedFetch('/api/v1/favorites');
 
         if (!response.ok) {
           throw new Error('Failed to load favorites');
@@ -249,6 +253,20 @@ function MainPage({ lang, setLang }) {
           setFavorites((data.favorites || []).map(String));
         }
       } catch (error) {
+        if (error instanceof SessionExpiredError) {
+          setFavorites([]);
+          setUserEmail('');
+
+          alert(
+            lang === 'en'
+              ? 'Your session has expired. Please sign in again.'
+              : '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.'
+          );
+
+          navigate('/login');
+          return;
+        }
+
         console.error('Favorites load error:', error);
       }
     };
@@ -283,13 +301,10 @@ function MainPage({ lang, setLang }) {
     setFavorites(updatedFavorites);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/favorites/${encodeURIComponent(courseId)}`,
+      const response = await authenticatedFetch(
+        `/api/v1/favorites/${encodeURIComponent(courseId)}`,
         {
-          method: isFavorite ? 'DELETE' : 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+          method: isFavorite ? 'DELETE' : 'POST'
         }
       );
 
@@ -297,10 +312,23 @@ function MainPage({ lang, setLang }) {
         throw new Error('Failed to update favorite');
       }
     } catch (error) {
-      console.error('Favorite update error:', error);
-
-      // 서버 저장 실패 시 화면 상태 되돌리기
+      // 서버 저장 실패 시 optimistic UI 되돌리기
       setFavorites(previousFavorites);
+
+      if (error instanceof SessionExpiredError) {
+        setUserEmail('');
+
+        alert(
+          lang === 'en'
+            ? 'Your session has expired. Please sign in again.'
+            : '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.'
+        );
+
+        navigate('/login');
+        return;
+      }
+
+      console.error('Favorite update error:', error);
 
       alert(
         lang === 'en'
