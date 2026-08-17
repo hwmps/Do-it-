@@ -72,43 +72,49 @@ const translations = {
 };
 
 // 🔑 LoginPage 컴포넌트
-function LoginPage({ lang }) {
+function LoginPage({ lang, setLang }) {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-
+  const handleGoogleSuccess = async (credentialResponse) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      setErrorMsg('');
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/google`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          credential: credentialResponse.credential
+        })
       });
 
       const data = await response.json();
 
-      if (response.ok && data.status === 'success') {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('userEmail', data.user.email);
-        alert(lang === 'en' ? 'Login Successful!' : '로그인에 성공했습니다!');
-        navigate('/');
-      } else {
-        setErrorMsg(data.message || (lang === 'en' ? 'Login failed.' : '로그인에 실패했습니다.'));
+      if (!response.ok || data.status !== 'success') {
+        throw new Error(data.message || 'Google authentication failed');
       }
-    } catch (err) {
-      setErrorMsg(lang === 'en' ? 'Server connection error.' : '백엔드 서버 연동 오류!');
-    }
-  };
 
-  const handleGoogleSuccess = (credentialResponse) => {
-    localStorage.setItem('token', credentialResponse.credential);
-    localStorage.setItem('userEmail', 'Google User');
-    alert(lang === 'en' ? 'Google Login Successful!' : '구글 로그인에 성공했습니다!');
-    navigate('/');
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('userEmail', data.user.email);
+
+      alert(
+        lang === 'en'
+          ? 'Google Login Successful!'
+          : '구글 로그인에 성공했습니다!'
+      );
+
+      navigate('/');
+    } catch (error) {
+      console.error('Google login error:', error);
+
+      setErrorMsg(
+        lang === 'en'
+          ? 'Google authentication failed.'
+          : '구글 인증에 실패했습니다.'
+      );
+    }
   };
 
   const handleGoogleError = () => {
@@ -118,6 +124,42 @@ function LoginPage({ lang }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#fff7ed' }}>
       <div style={{ background: '#fff', padding: '40px', borderRadius: '24px', border: '1px solid #ffedd5', boxShadow: '0 8px 30px rgba(249,115,22,0.1)', width: '100%', maxWidth: '400px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '16px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setLang('ko');
+              localStorage.setItem('lang', 'ko');
+            }}
+            style={{
+              border: 'none',
+              background: lang === 'ko' ? '#ffedd5' : 'transparent',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              cursor: 'pointer'
+            }}
+          >
+            🇰🇷 한국어
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLang('en');
+              localStorage.setItem('lang', 'en');
+            }}
+            style={{
+              border: 'none',
+              background: lang === 'en' ? '#ffedd5' : 'transparent',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              cursor: 'pointer'
+            }}
+          >
+            🇺🇸 English
+          </button>
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
           <img src="/character.png" alt="character" style={{ width: '64px', height: '64px', objectFit: 'contain' }} />
           <h2 style={{ color: '#9a3412', fontSize: '26px', fontWeight: 'bold', margin: 0 }}>
@@ -143,46 +185,6 @@ function LoginPage({ lang }) {
             locale={lang === 'en' ? 'en' : 'ko'}
           />
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
-          <div style={{ flex: 1, height: '1px', backgroundColor: '#fed7aa' }}></div>
-          <span style={{ padding: '0 10px', fontSize: '12px', color: '#ea580c' }}>
-            {lang === 'en' ? 'or continue with email' : '또는 이메일로 로그인'}
-          </span>
-          <div style={{ flex: 1, height: '1px', backgroundColor: '#fed7aa' }}></div>
-        </div>
-
-        <form onSubmit={handleLogin}>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#7c2d12', marginBottom: '6px' }}>
-              {lang === 'en' ? 'Email' : '이메일'}
-            </label>
-            <input 
-              type="email" 
-              required 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@example.com"
-              style={{ width: '100%', padding: '12px', border: '1px solid #fed7aa', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }}
-            />
-          </div>
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#7c2d12', marginBottom: '6px' }}>
-              {lang === 'en' ? 'Password' : '비밀번호'}
-            </label>
-            <input 
-              type="password" 
-              required 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{ width: '100%', padding: '12px', border: '1px solid #fed7aa', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }}
-            />
-          </div>
-          <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
-            {lang === 'en' ? 'Sign In' : '로그인'}
-          </button>
-        </form>
 
         <button 
           onClick={() => navigate('/')} 
@@ -222,28 +224,97 @@ function MainPage({ lang, setLang }) {
     const savedEmail = localStorage.getItem('userEmail');
     if (savedEmail) setUserEmail(savedEmail);
 
-    const savedFavorites = localStorage.getItem('doit_favorites');
-    if (savedFavorites) {
-      try { setFavorites(JSON.parse(savedFavorites)); } catch (e) {}
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      setFavorites([]);
+      return;
     }
+
+    const loadFavorites = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/favorites`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load favorites');
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'success') {
+          setFavorites((data.favorites || []).map(String));
+        }
+      } catch (error) {
+        console.error('Favorites load error:', error);
+      }
+    };
+
+    loadFavorites();
   }, []);
 
-  const toggleFavorite = (e, id) => {
+  const toggleFavorite = async (e, id) => {
     e.stopPropagation();
-    let updated;
-    if (favorites.includes(id)) {
-      updated = favorites.filter(favId => favId !== id);
-    } else {
-      updated = [...favorites, id];
+
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      alert(
+        lang === 'en'
+          ? 'Please log in to save courses.'
+          : '강좌를 찜하려면 로그인해 주세요.'
+      );
+      navigate('/login');
+      return;
     }
-    setFavorites(updated);
-    localStorage.setItem('doit_favorites', JSON.stringify(updated));
+
+    const courseId = String(id);
+    const isFavorite = favorites.includes(courseId);
+
+    const previousFavorites = favorites;
+    const updatedFavorites = isFavorite
+      ? favorites.filter(favId => favId !== courseId)
+      : [...favorites, courseId];
+
+    // 화면은 먼저 즉시 반영
+    setFavorites(updatedFavorites);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/favorites/${encodeURIComponent(courseId)}`,
+        {
+          method: isFavorite ? 'DELETE' : 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update favorite');
+      }
+    } catch (error) {
+      console.error('Favorite update error:', error);
+
+      // 서버 저장 실패 시 화면 상태 되돌리기
+      setFavorites(previousFavorites);
+
+      alert(
+        lang === 'en'
+          ? 'Failed to update saved courses.'
+          : '찜 목록을 업데이트하지 못했습니다.'
+      );
+    }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('userEmail');
     setUserEmail('');
+    setFavorites([]);
     alert(lang === 'en' ? 'Logged out.' : '로그아웃 되었습니다.');
   };
 
@@ -273,7 +344,7 @@ function MainPage({ lang, setLang }) {
         }));
 
         if (showFavoritesOnly) {
-          mapped = mapped.filter(item => favorites.includes(item.id));
+          mapped = mapped.filter(item => favorites.includes(String(item.id)));
         }
         setFilteredResults(mapped);
       } else {
@@ -286,7 +357,7 @@ function MainPage({ lang, setLang }) {
         const matchKeyword = keyword === '' || title.toLowerCase().includes(keyword.toLowerCase()) || location.toLowerCase().includes(keyword.toLowerCase());
         const matchStatus = selectedStatus === '전체' || item.status === selectedStatus;
         const matchTarget = selectedTarget === '전체' || item.target === selectedTarget;
-        const matchFavorite = !showFavoritesOnly || favorites.includes(item.id);
+        const matchFavorite = !showFavoritesOnly || favorites.includes(String(item.id));
 
         return matchKeyword && matchStatus && matchTarget && matchFavorite;
       });
@@ -541,7 +612,7 @@ function MainPage({ lang, setLang }) {
                 {filteredResults.map((item) => {
                   const isSelected = selectedId === item.id;
                   const isHovered = hoveredId === item.id;
-                  const isFav = favorites.includes(item.id);
+                  const isFav = favorites.includes(String(item.id));
                   const displayTitle = lang === 'en' ? item.titleEn : item.titleKo;
                   const displayLoc = lang === 'en' ? item.locationEn : item.locationKo;
 
@@ -646,7 +717,7 @@ function MainPage({ lang, setLang }) {
 
 // 🚦 App 루트 컴포넌트
 function App() {
-  const [lang, setLang] = useState('ko');
+  const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ko');
 
   return (
     <Routes>

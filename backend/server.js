@@ -4,6 +4,16 @@ const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
 const { GoogleGenAI } = require('@google/genai');
+const { OAuth2Client } = require('google-auth-library');
+const jwt = require('jsonwebtoken');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  QueryCommand,
+  PutCommand,
+  DeleteCommand
+} = require('@aws-sdk/lib-dynamodb');
+
 require('dotenv').config();
 
 const app = express();
@@ -20,7 +30,13 @@ const io = new Server(server, {
 
 // 🤖 Gemini AI 클라이언트 설정
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const dynamoClient = new DynamoDBClient({
+  region: process.env.AWS_REGION
+});
+
+const dynamoDb = DynamoDBDocumentClient.from(dynamoClient);
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
@@ -160,14 +176,217 @@ io.on('connection', (socket) => {
     }
   });
 });
+// 🔐 Google 로그인 인증
+app.post('/api/v1/auth/google', async (req, res) => {
+  const { credential } = req.body;
 
-app.post('/api/v1/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  if (email && password) {
-    res.json({ status: 'success', token: 'mock-jwt-token-12345', user: { email } });
-  } else {
-    res.status(400).json({ status: 'fail', message: '이메일과 비밀번호를 입력해주세요.' });
+  
+
+  if (!credential) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Google credential이 필요합니다.'
+    });
   }
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    console.error('GOOGLE_CLIENT_ID가 설정되지 않았습니다.');
+
+    return res.status(500).json({
+      status: 'fail',
+      message: 'Google 인증 설정이 완료되지 않았습니다.'
+    });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      return res.status(401).json({
+        status: 'fail',
+        message: '유효하지 않은 Google 토큰입니다.'
+      });
+    }
+
+    const user = {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture
+    };
+
+   const token = jwt.sign(
+  {
+    email: user.email
+  },
+  process.env.JWT_SECRET,
+  {
+    subject: user.id,
+    expiresIn: '1h',
+    issuer: 'do-it-api'
+  }
+);
+
+return res.json({
+  status: 'success',
+  token,
+  user
+});
+
+  } catch (error) {
+    console.error('Google 인증 실패:', error.message);
+
+    return res.status(401).json({
+      status: 'fail',
+      message: 'Google 인증에 실패했습니다.'
+    });
+  }
+});
+
+// 🔐 JWT 인증 미들웨어
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({
+      status: 'fail',
+      message: '인증 토큰이 필요합니다.'
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      issuer: 'do-it-api'
+    });
+
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      status: 'fail',
+      message: '유효하지 않거나 만료된 토큰입니다.'
+    });
+  }
+};
+
+// ❤️ 현재 사용자의 즐겨찾기 조회
+app.get('/api/v1/favorites', authenticateToken, async (req, res) => {
+  try {
+    const result = await dynamoDb.send(
+      new QueryCommand({
+        TableName: process.env.AWS_DYNAMODB_TABLE_FAVORITES,
+        KeyConditionExpression: 'userId = :userId',
+        ExpressionAttributeValues: {
+          ':userId': req.user.sub
+        },
+        ProjectionExpression: 'courseId'
+      })
+    );
+
+    const favorites = (result.Items || []).map(item => item.courseId);
+
+    return res.json({
+      status: 'success',
+      favorites
+    });
+  } catch (error) {
+    console.error('Favorites 조회 실패:', error);
+
+    return res.status(500).json({
+      status: 'fail',
+      message: '즐겨찾기를 불러오지 못했습니다.'
+    });
+  }
+});
+
+// ❤️ 즐겨찾기 추가
+app.post('/api/v1/favorites/:courseId', authenticateToken, async (req, res) => {
+  const courseId = String(req.params.courseId || '').trim();
+
+  if (!courseId) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'courseId가 필요합니다.'
+    });
+  }
+
+  try {
+    await dynamoDb.send(
+      new PutCommand({
+        TableName: process.env.AWS_DYNAMODB_TABLE_FAVORITES,
+        Item: {
+          userId: req.user.sub,
+          courseId,
+          createdAt: new Date().toISOString()
+        }
+      })
+    );
+
+    return res.status(201).json({
+      status: 'success',
+      courseId
+    });
+  } catch (error) {
+    console.error('Favorites 추가 실패:', error);
+
+    return res.status(500).json({
+      status: 'fail',
+      message: '즐겨찾기를 저장하지 못했습니다.'
+    });
+  }
+});
+
+// 💔 즐겨찾기 삭제
+app.delete('/api/v1/favorites/:courseId', authenticateToken, async (req, res) => {
+  const courseId = String(req.params.courseId || '').trim();
+
+  if (!courseId) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'courseId가 필요합니다.'
+    });
+  }
+
+  try {
+    await dynamoDb.send(
+      new DeleteCommand({
+        TableName: process.env.AWS_DYNAMODB_TABLE_FAVORITES,
+        Key: {
+          userId: req.user.sub,
+          courseId
+        }
+      })
+    );
+
+    return res.json({
+      status: 'success',
+      courseId
+    });
+  } catch (error) {
+    console.error('Favorites 삭제 실패:', error);
+
+    return res.status(500).json({
+      status: 'fail',
+      message: '즐겨찾기를 삭제하지 못했습니다.'
+    });
+  }
+});
+
+// 👤 현재 로그인 사용자 확인
+app.get('/api/v1/auth/me', authenticateToken, (req, res) => {
+  return res.json({
+    status: 'success',
+    user: {
+      id: req.user.sub,
+      email: req.user.email
+    }
+  });
 });
 
 const PORT = process.env.PORT || 5000;
