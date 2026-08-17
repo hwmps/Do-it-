@@ -6,6 +6,7 @@ const axios = require('axios');
 const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
+const { requestObservability } = require('./middleware/requestObservability');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -19,6 +20,7 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(requestObservability);
 
 const server = http.createServer(app);
 const io = new Server(server, {
