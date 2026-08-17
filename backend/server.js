@@ -8,6 +8,7 @@ const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const { requestObservability } = require('./middleware/requestObservability');
 const { logger } = require('./observability/logger');
+const { aiMetrics, MetricUnit } = require('./observability/metrics');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -97,6 +98,40 @@ app.get('/api/v1/locations/search', async (req, res) => {
   }
 });
 
+function publishAiRequestMetrics(durationMs, outcome) {
+  aiMetrics.addMetric(
+    'AIRequestCount',
+    MetricUnit.Count,
+    1
+  );
+
+  aiMetrics.addMetric(
+    'AIRequestLatency',
+    MetricUnit.Milliseconds,
+    durationMs
+  );
+
+  aiMetrics.addMetric(
+    'AIRequestSuccessCount',
+    MetricUnit.Count,
+    outcome === 'success' ? 1 : 0
+  );
+
+  aiMetrics.addMetric(
+    'AIRequestTimeoutCount',
+    MetricUnit.Count,
+    outcome === 'timeout' ? 1 : 0
+  );
+
+  aiMetrics.addMetric(
+    'AIRequestErrorCount',
+    MetricUnit.Count,
+    outcome === 'error' ? 1 : 0
+  );
+
+  aiMetrics.publishStoredMetrics();
+}
+
 // 🤖 Gemini AI 맞춤 추천 엔드포인트
 app.post('/api/v1/recommend/ai', async (req, res) => {
   const { userPrompt, courses, lang = 'ko' } = req.body;
@@ -175,6 +210,11 @@ app.post('/api/v1/recommend/ai', async (req, res) => {
       outputChars: response.text?.length || 0
     });
 
+    publishAiRequestMetrics(
+      durationMs,
+      'success'
+    );
+
     return res.json({
       status: 'success',
       recommendation: response.text
@@ -206,6 +246,11 @@ app.post('/api/v1/recommend/ai', async (req, res) => {
     } else {
       logger.error('Gemini request failed', logData);
     }
+
+    publishAiRequestMetrics(
+      durationMs,
+      isTimeout ? 'timeout' : 'error'
+    );
 
     return res.status(isTimeout ? 504 : 502).json({
       status: 'fail',

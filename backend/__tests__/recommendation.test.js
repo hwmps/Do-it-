@@ -28,8 +28,15 @@ const mockMetrics = {
   publishStoredMetrics: jest.fn()
 };
 
+const mockAiMetrics = {
+  addMetric: jest.fn(),
+  addMetadata: jest.fn(),
+  publishStoredMetrics: jest.fn()
+};
+
 jest.mock('../observability/metrics', () => ({
   metrics: mockMetrics,
+  aiMetrics: mockAiMetrics,
   MetricUnit: {
     Count: 'Count',
     Milliseconds: 'Milliseconds'
@@ -90,6 +97,27 @@ describe('AI recommendation endpoint', () => {
         model: 'gemini-3.6-flash'
       })
     );
+
+    expect(mockAiMetrics.addMetric).toHaveBeenCalledWith(
+      'AIRequestCount',
+      'Count',
+      1
+    );
+
+    expect(mockAiMetrics.addMetric).toHaveBeenCalledWith(
+      'AIRequestLatency',
+      'Milliseconds',
+      expect.any(Number)
+    );
+
+    expect(mockAiMetrics.addMetric).toHaveBeenCalledWith(
+      'AIRequestSuccessCount',
+      'Count',
+      1
+    );
+
+    expect(mockAiMetrics.publishStoredMetrics)
+      .toHaveBeenCalledTimes(1);
   });
 
   test('returns 504 when Gemini times out', async () => {
