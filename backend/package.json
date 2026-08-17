@@ -12,6 +12,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1111.0",
+    "@aws-sdk/lib-dynamodb": "^3.1111.0",
     "@codegenie/serverless-express": "4.15.0",
     "@google/genai": "^2.16.0",
     "axios": "^1.19.0",

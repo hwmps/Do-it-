@@ -6,6 +6,13 @@ const axios = require('axios');
 const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  QueryCommand,
+  PutCommand,
+  DeleteCommand
+} = require('@aws-sdk/lib-dynamodb');
 
 require('dotenv').config();
 
@@ -24,6 +31,12 @@ const io = new Server(server, {
 // 🤖 Gemini AI 클라이언트 설정
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const dynamoClient = new DynamoDBClient({
+  region: process.env.AWS_REGION
+});
+
+const dynamoDb = DynamoDBDocumentClient.from(dynamoClient);
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
@@ -261,6 +274,109 @@ const authenticateToken = (req, res, next) => {
     });
   }
 };
+
+// ❤️ 현재 사용자의 즐겨찾기 조회
+app.get('/api/v1/favorites', authenticateToken, async (req, res) => {
+  try {
+    const result = await dynamoDb.send(
+      new QueryCommand({
+        TableName: process.env.AWS_DYNAMODB_TABLE_FAVORITES,
+        KeyConditionExpression: 'userId = :userId',
+        ExpressionAttributeValues: {
+          ':userId': req.user.sub
+        },
+        ProjectionExpression: 'courseId'
+      })
+    );
+
+    const favorites = (result.Items || []).map(item => item.courseId);
+
+    return res.json({
+      status: 'success',
+      favorites
+    });
+  } catch (error) {
+    console.error('Favorites 조회 실패:', error);
+
+    return res.status(500).json({
+      status: 'fail',
+      message: '즐겨찾기를 불러오지 못했습니다.'
+    });
+  }
+});
+
+// ❤️ 즐겨찾기 추가
+app.post('/api/v1/favorites/:courseId', authenticateToken, async (req, res) => {
+  const courseId = String(req.params.courseId || '').trim();
+
+  if (!courseId) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'courseId가 필요합니다.'
+    });
+  }
+
+  try {
+    await dynamoDb.send(
+      new PutCommand({
+        TableName: process.env.AWS_DYNAMODB_TABLE_FAVORITES,
+        Item: {
+          userId: req.user.sub,
+          courseId,
+          createdAt: new Date().toISOString()
+        }
+      })
+    );
+
+    return res.status(201).json({
+      status: 'success',
+      courseId
+    });
+  } catch (error) {
+    console.error('Favorites 추가 실패:', error);
+
+    return res.status(500).json({
+      status: 'fail',
+      message: '즐겨찾기를 저장하지 못했습니다.'
+    });
+  }
+});
+
+// 💔 즐겨찾기 삭제
+app.delete('/api/v1/favorites/:courseId', authenticateToken, async (req, res) => {
+  const courseId = String(req.params.courseId || '').trim();
+
+  if (!courseId) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'courseId가 필요합니다.'
+    });
+  }
+
+  try {
+    await dynamoDb.send(
+      new DeleteCommand({
+        TableName: process.env.AWS_DYNAMODB_TABLE_FAVORITES,
+        Key: {
+          userId: req.user.sub,
+          courseId
+        }
+      })
+    );
+
+    return res.json({
+      status: 'success',
+      courseId
+    });
+  } catch (error) {
+    console.error('Favorites 삭제 실패:', error);
+
+    return res.status(500).json({
+      status: 'fail',
+      message: '즐겨찾기를 삭제하지 못했습니다.'
+    });
+  }
+});
 
 // 👤 현재 로그인 사용자 확인
 app.get('/api/v1/auth/me', authenticateToken, (req, res) => {

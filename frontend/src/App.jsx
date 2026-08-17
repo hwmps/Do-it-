@@ -224,28 +224,97 @@ function MainPage({ lang, setLang }) {
     const savedEmail = localStorage.getItem('userEmail');
     if (savedEmail) setUserEmail(savedEmail);
 
-    const savedFavorites = localStorage.getItem('doit_favorites');
-    if (savedFavorites) {
-      try { setFavorites(JSON.parse(savedFavorites)); } catch (e) {}
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      setFavorites([]);
+      return;
     }
+
+    const loadFavorites = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/favorites`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load favorites');
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'success') {
+          setFavorites((data.favorites || []).map(String));
+        }
+      } catch (error) {
+        console.error('Favorites load error:', error);
+      }
+    };
+
+    loadFavorites();
   }, []);
 
-  const toggleFavorite = (e, id) => {
+  const toggleFavorite = async (e, id) => {
     e.stopPropagation();
-    let updated;
-    if (favorites.includes(id)) {
-      updated = favorites.filter(favId => favId !== id);
-    } else {
-      updated = [...favorites, id];
+
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      alert(
+        lang === 'en'
+          ? 'Please log in to save courses.'
+          : '강좌를 찜하려면 로그인해 주세요.'
+      );
+      navigate('/login');
+      return;
     }
-    setFavorites(updated);
-    localStorage.setItem('doit_favorites', JSON.stringify(updated));
+
+    const courseId = String(id);
+    const isFavorite = favorites.includes(courseId);
+
+    const previousFavorites = favorites;
+    const updatedFavorites = isFavorite
+      ? favorites.filter(favId => favId !== courseId)
+      : [...favorites, courseId];
+
+    // 화면은 먼저 즉시 반영
+    setFavorites(updatedFavorites);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/favorites/${encodeURIComponent(courseId)}`,
+        {
+          method: isFavorite ? 'DELETE' : 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update favorite');
+      }
+    } catch (error) {
+      console.error('Favorite update error:', error);
+
+      // 서버 저장 실패 시 화면 상태 되돌리기
+      setFavorites(previousFavorites);
+
+      alert(
+        lang === 'en'
+          ? 'Failed to update saved courses.'
+          : '찜 목록을 업데이트하지 못했습니다.'
+      );
+    }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('userEmail');
     setUserEmail('');
+    setFavorites([]);
     alert(lang === 'en' ? 'Logged out.' : '로그아웃 되었습니다.');
   };
 
@@ -275,7 +344,7 @@ function MainPage({ lang, setLang }) {
         }));
 
         if (showFavoritesOnly) {
-          mapped = mapped.filter(item => favorites.includes(item.id));
+          mapped = mapped.filter(item => favorites.includes(String(item.id)));
         }
         setFilteredResults(mapped);
       } else {
@@ -288,7 +357,7 @@ function MainPage({ lang, setLang }) {
         const matchKeyword = keyword === '' || title.toLowerCase().includes(keyword.toLowerCase()) || location.toLowerCase().includes(keyword.toLowerCase());
         const matchStatus = selectedStatus === '전체' || item.status === selectedStatus;
         const matchTarget = selectedTarget === '전체' || item.target === selectedTarget;
-        const matchFavorite = !showFavoritesOnly || favorites.includes(item.id);
+        const matchFavorite = !showFavoritesOnly || favorites.includes(String(item.id));
 
         return matchKeyword && matchStatus && matchTarget && matchFavorite;
       });
@@ -543,7 +612,7 @@ function MainPage({ lang, setLang }) {
                 {filteredResults.map((item) => {
                   const isSelected = selectedId === item.id;
                   const isHovered = hoveredId === item.id;
-                  const isFav = favorites.includes(item.id);
+                  const isFav = favorites.includes(String(item.id));
                   const displayTitle = lang === 'en' ? item.titleEn : item.titleKo;
                   const displayLoc = lang === 'en' ? item.locationEn : item.locationKo;
 
