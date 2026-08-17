@@ -1,0 +1,388 @@
+{
+  "start": "-PT6H",
+  "periodOverride": "inherit",
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 2,
+      "properties": {
+        "markdown": "# Do-it Production Observability\nCore API + Gemini AI service health. SLO thresholds will be set after collecting a meaningful production baseline."
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 2,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "AI Request Latency",
+        "region": "ap-southeast-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "liveData": true,
+        "period": 300,
+        "metrics": [
+          [
+            "DoIt",
+            "AIRequestLatency",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "stat": "p50",
+              "label": "p50"
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestLatency",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "stat": "p95",
+              "label": "p95"
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestLatency",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "stat": "p99",
+              "label": "p99"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "label": "Milliseconds"
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 2,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "AI Request Outcomes",
+        "region": "ap-southeast-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "liveData": true,
+        "period": 300,
+        "stat": "Sum",
+        "metrics": [
+          [
+            "DoIt",
+            "AIRequestCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "label": "Requests"
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestSuccessCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "label": "Success"
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestTimeoutCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "label": "Timeout"
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestErrorCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "label": "Error"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 8,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "AI Success / Failure Rate",
+        "region": "ap-southeast-2",
+        "view": "timeSeries",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100,
+            "label": "Percent"
+          }
+        },
+        "metrics": [
+          [
+            "DoIt",
+            "AIRequestCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "aic",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestSuccessCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "ais",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestTimeoutCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "ait",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            "DoIt",
+            "AIRequestErrorCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "aie",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "IF(aic>0,100*ais/aic,0)",
+              "label": "Success Rate (%)",
+              "id": "successrate"
+            }
+          ],
+          [
+            {
+              "expression": "IF(aic>0,100*(ait+aie)/aic,0)",
+              "label": "Failure Rate (%)",
+              "id": "failurerate"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 8,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Core HTTP Request Latency",
+        "region": "ap-southeast-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "liveData": true,
+        "period": 300,
+        "metrics": [
+          [
+            "DoIt",
+            "RequestLatency",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "stat": "p50",
+              "label": "p50"
+            }
+          ],
+          [
+            "DoIt",
+            "RequestLatency",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "stat": "p95",
+              "label": "p95"
+            }
+          ],
+          [
+            "DoIt",
+            "RequestLatency",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "stat": "p99",
+              "label": "p99"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 14,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "HTTP Error Rate",
+        "region": "ap-southeast-2",
+        "view": "timeSeries",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100,
+            "label": "Percent"
+          }
+        },
+        "metrics": [
+          [
+            "DoIt",
+            "RequestCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "requests",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            "DoIt",
+            "ClientErrorCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "clienterrors",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            "DoIt",
+            "ServerErrorCount",
+            "environment",
+            "production",
+            "service",
+            "do-it-backend",
+            {
+              "id": "servererrors",
+              "stat": "Sum",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "IF(requests>0,100*clienterrors/requests,0)",
+              "label": "4xx Rate (%)",
+              "id": "clientrate"
+            }
+          ],
+          [
+            {
+              "expression": "IF(requests>0,100*servererrors/requests,0)",
+              "label": "5xx Rate (%)",
+              "id": "serverrate"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 14,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda Runtime Health",
+        "region": "ap-southeast-2",
+        "view": "timeSeries",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/Lambda",
+            "Duration",
+            "FunctionName",
+            "do-it-backend",
+            {
+              "stat": "p95",
+              "label": "Lambda Duration p95"
+            }
+          ],
+          [
+            "AWS/Lambda",
+            "Duration",
+            "FunctionName",
+            "do-it-backend",
+            {
+              "stat": "p99",
+              "label": "Lambda Duration p99"
+            }
+          ]
+        ]
+      }
+    }
+  ]
+}
