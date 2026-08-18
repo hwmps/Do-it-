@@ -44,6 +44,13 @@ const dynamoDb = DynamoDBDocumentClient.from(dynamoClient);
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
+app.get('/api/v1/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'do-it-backend'
+  });
+});
+
 app.get('/', (req, res) => {
   res.send('🚀 Do-it Backend Server is Running On Render!');
 });
