@@ -102,3 +102,33 @@ Next experiments will use controlled request-rate scenarios to:
 3. observe Lambda concurrency, errors, and throttling under increasing load;
 4. compare Lambda memory configurations and their latency/cost trade-offs;
 5. separately benchmark endpoints that depend on external APIs.
+
+## Capacity Experiment
+
+A constant-arrival-rate scenario was used to separate request rate from response time and identify infrastructure capacity limits.
+
+| Target rate | Requests | HTTP failures | Result |
+|---|---:|---:|---|
+| 5 RPS | 301 | 0 | Passed |
+| 10 RPS | 601 | 0 | Passed |
+| 20 RPS | 1,201 | 3 | Lambda throttling observed |
+
+At 20 RPS, API Gateway returned three HTTP 503 responses.
+
+CloudWatch access logs identified the integration error as:
+
+`The Lambda function is being throttled. Try again later.`
+
+The Lambda function had no function-level reserved concurrency configured. The AWS account's regional Lambda concurrency quota was 10, and CloudWatch recorded `ConcurrentExecutions = 10` during the exact minute in which the throttled requests occurred.
+
+This establishes the observed failure mode as an infrastructure quota bottleneck rather than an application-level failure.
+
+### Capacity finding
+
+The experiment therefore does **not** establish 20 RPS as the backend's intrinsic capacity.
+
+Instead, the controlled load test identified the AWS account's regional Lambda concurrency quota as the first limiting factor:
+
+`load increase -> concurrency reaches 10 -> account quota reached -> Lambda throttling -> API Gateway 503`
+
+No quota increase was performed after the experiment because the production environment is intentionally being operated under a zero-cost constraint.
