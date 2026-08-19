@@ -118,4 +118,53 @@ describe('CircuitBreaker', () => {
 
     expect(breaker.getState()).toBe('OPEN');
   });
+
+  test('does not count failures excluded by the classifier', async () => {
+    const breaker = new CircuitBreaker({
+      failureThreshold: 1,
+      shouldCountFailure: (error) => error.status >= 500
+    });
+
+    const clientError = new Error('bad request');
+    clientError.status = 400;
+
+    await expect(
+      breaker.execute(() => Promise.reject(clientError))
+    ).rejects.toThrow('bad request');
+
+    expect(breaker.getState()).toBe('CLOSED');
+  });
+
+
+  test('closes when HALF_OPEN probe fails with an excluded error', async () => {
+    let now = 1000;
+
+    const breaker = new CircuitBreaker({
+      failureThreshold: 1,
+      resetTimeoutMs: 30000,
+      nowFn: () => now,
+      shouldCountFailure: (error) => error.status >= 500
+    });
+
+    const serverError = new Error('upstream failed');
+    serverError.status = 503;
+
+    await expect(
+      breaker.execute(() => Promise.reject(serverError))
+    ).rejects.toThrow('upstream failed');
+
+    expect(breaker.getState()).toBe('OPEN');
+
+    now += 30000;
+
+    const clientError = new Error('bad request');
+    clientError.status = 400;
+
+    await expect(
+      breaker.execute(() => Promise.reject(clientError))
+    ).rejects.toThrow('bad request');
+
+    expect(breaker.getState()).toBe('CLOSED');
+  });
+
 });

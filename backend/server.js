@@ -10,8 +10,8 @@ const { requestObservability } = require('./middleware/requestObservability');
 const { authenticateToken } = require('./middleware/authenticateToken');
 const { createUserRateLimiter } = require('./middleware/userRateLimiter');
 const { logger } = require('./observability/logger');
-const { aiMetrics, MetricUnit } = require('./observability/metrics');
-const { withRetry } = require('./utils/retry');
+const { aiMetrics, publicDataMetrics, MetricUnit } = require('./observability/metrics');
+const { withRetry, isRetryableError } = require('./utils/retry');
 const {
   CircuitBreaker,
   CircuitOpenError
@@ -59,8 +59,19 @@ const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 const publicDataCircuitBreaker = new CircuitBreaker({
   failureThreshold: 3,
-  resetTimeoutMs: 30000
+  resetTimeoutMs: 30000,
+  shouldCountFailure: isRetryableError
 });
+
+function incrementPublicDataMetric(name) {
+  publicDataMetrics.addMetric(
+    name,
+    MetricUnit.Count,
+    1
+  );
+
+  publicDataMetrics.publishStoredMetrics();
+}
 
 app.locals.publicDataCircuitBreaker = publicDataCircuitBreaker;
 
@@ -125,6 +136,10 @@ app.get('/api/v1/locations/search', async (req, res) => {
                 status,
                 code
               });
+
+              incrementPublicDataMetric(
+                'PublicDataRetryCount'
+              );
             }
           }
         )
@@ -154,6 +169,22 @@ app.get('/api/v1/locations/search', async (req, res) => {
     throw new Error('API 데이터 대기');
   } catch (error) {
     const circuitOpen = error instanceof CircuitOpenError;
+    const circuitState = publicDataCircuitBreaker.getState();
+
+    const breakerOpenedByThisFailure =
+      !circuitOpen &&
+      circuitState === 'OPEN' &&
+      isRetryableError(error);
+
+    if (breakerOpenedByThisFailure) {
+      incrementPublicDataMetric(
+        'PublicDataCircuitBreakerOpenCount'
+      );
+    }
+
+    incrementPublicDataMetric(
+      'PublicDataFallbackCount'
+    );
 
     logger.warn(
       circuitOpen
@@ -163,7 +194,7 @@ app.get('/api/v1/locations/search', async (req, res) => {
         status: error?.response?.status ?? null,
         code: error?.code ?? null,
         errorType: error?.name ?? 'Error',
-        circuitState: publicDataCircuitBreaker.getState()
+        circuitState
       }
     );
 

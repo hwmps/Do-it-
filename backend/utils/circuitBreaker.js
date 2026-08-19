@@ -10,11 +10,13 @@ class CircuitBreaker {
   constructor({
     failureThreshold = 3,
     resetTimeoutMs = 30000,
-    nowFn = Date.now
+    nowFn = Date.now,
+    shouldCountFailure = () => true
   } = {}) {
     this.failureThreshold = failureThreshold;
     this.resetTimeoutMs = resetTimeoutMs;
     this.nowFn = nowFn;
+    this.shouldCountFailure = shouldCountFailure;
 
     this.state = 'CLOSED';
     this.failureCount = 0;
@@ -37,7 +39,12 @@ class CircuitBreaker {
       this.reset();
       return result;
     } catch (error) {
-      this.recordFailure();
+      if (this.shouldCountFailure(error)) {
+        this.recordFailure();
+      } else if (this.state === 'HALF_OPEN') {
+        this.reset();
+      }
+
       throw error;
     }
   }

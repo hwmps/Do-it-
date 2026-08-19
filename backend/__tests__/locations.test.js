@@ -39,9 +39,16 @@ const mockAiMetrics = {
   publishStoredMetrics: jest.fn()
 };
 
+const mockPublicDataMetrics = {
+  addMetric: jest.fn(),
+  addMetadata: jest.fn(),
+  publishStoredMetrics: jest.fn()
+};
+
 jest.mock('../observability/metrics', () => ({
   metrics: mockMetrics,
   aiMetrics: mockAiMetrics,
+  publicDataMetrics: mockPublicDataMetrics,
   MetricUnit: {
     Count: 'Count',
     Milliseconds: 'Milliseconds'
@@ -130,6 +137,18 @@ describe('location search resilience', () => {
         status: 503
       })
     );
+
+    expect(mockPublicDataMetrics.addMetric)
+      .toHaveBeenCalledWith(
+        'PublicDataRetryCount',
+        'Count',
+        1
+      );
+
+    expect(
+      mockPublicDataMetrics.addMetric.mock.calls
+        .filter(([name]) => name === 'PublicDataRetryCount')
+    ).toHaveLength(1);
   });
 
   test('does not retry a 400 and immediately uses fallback data', async () => {
@@ -155,6 +174,18 @@ describe('location search resilience', () => {
         errorType: 'AxiosError'
       })
     );
+
+    expect(mockPublicDataMetrics.addMetric)
+      .toHaveBeenCalledWith(
+        'PublicDataFallbackCount',
+        'Count',
+        1
+      );
+
+    expect(
+      mockPublicDataMetrics.addMetric.mock.calls
+        .filter(([name]) => name === 'PublicDataRetryCount')
+    ).toHaveLength(0);
   });
 
   test('falls back after all retry attempts fail', async () => {
@@ -249,6 +280,25 @@ describe('location search resilience', () => {
         circuitState: 'OPEN'
       })
     );
+
+    const circuitOpenMetrics =
+      mockPublicDataMetrics.addMetric.mock.calls
+        .filter(
+          ([name]) =>
+            name === 'PublicDataCircuitBreakerOpenCount'
+        );
+
+    expect(circuitOpenMetrics).toHaveLength(1);
+
+    const fallbackMetrics =
+      mockPublicDataMetrics.addMetric.mock.calls
+        .filter(
+          ([name]) =>
+            name === 'PublicDataFallbackCount'
+        );
+
+    // 3 failed requests + 1 request blocked by the OPEN circuit.
+    expect(fallbackMetrics).toHaveLength(4);
   });
 
 });

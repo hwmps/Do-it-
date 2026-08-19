@@ -100,3 +100,38 @@ describe('retry utility', () => {
     ).toBe(false);
   });
 });
+
+
+describe('isRetryableError', () => {
+  test.each([
+    [400, false],
+    [401, false],
+    [404, false],
+    [429, true],
+    [500, true],
+    [503, true]
+  ])(
+    'treats HTTP status %s as retryable=%s',
+    (status, expected) => {
+      const error = {
+        response: { status }
+      };
+
+      expect(isRetryableError(error)).toBe(expected);
+    }
+  );
+
+  test.each([
+    'ECONNABORTED',
+    'ETIMEDOUT',
+    'ECONNRESET',
+    'EAI_AGAIN'
+  ])(
+    'treats network error %s as retryable',
+    (code) => {
+      const error = { code };
+
+      expect(isRetryableError(error)).toBe(true);
+    }
+  );
+});
