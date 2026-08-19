@@ -54,6 +54,7 @@ const app = require('../server');
 describe('location search resilience', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    app.locals.publicDataCircuitBreaker.reset();
   });
 
   test('returns public API data when upstream succeeds', async () => {
@@ -208,4 +209,46 @@ describe('location search resilience', () => {
     expect(serializedLogs)
       .not.toContain('PRIVATE_SEARCH_TERM');
   });
+
+  test('opens the circuit after repeated upstream failures and skips the next upstream call', async () => {
+    axios.get.mockRejectedValue({
+      response: { status: 503 },
+      name: 'AxiosError'
+    });
+
+    // Each request exhausts the retry policy (3 axios attempts).
+    for (let i = 0; i < 3; i += 1) {
+      const response = await request(app)
+        .get('/api/v1/locations/search');
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('success');
+    }
+
+    expect(
+      app.locals.publicDataCircuitBreaker.getState()
+    ).toBe('OPEN');
+
+    // 3 requests × 3 retry attempts = 9 upstream calls.
+    expect(axios.get).toHaveBeenCalledTimes(9);
+
+    const fourthResponse = await request(app)
+      .get('/api/v1/locations/search');
+
+    expect(fourthResponse.status).toBe(200);
+    expect(fourthResponse.body.status).toBe('success');
+
+    // OPEN circuit must prevent any additional upstream request.
+    expect(axios.get).toHaveBeenCalledTimes(9);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'public-data.circuit-open',
+      expect.objectContaining({
+        code: 'CIRCUIT_OPEN',
+        errorType: 'CircuitOpenError',
+        circuitState: 'OPEN'
+      })
+    );
+  });
+
 });

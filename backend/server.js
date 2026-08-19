@@ -10,6 +10,10 @@ const { requestObservability } = require('./middleware/requestObservability');
 const { logger } = require('./observability/logger');
 const { aiMetrics, MetricUnit } = require('./observability/metrics');
 const { withRetry } = require('./utils/retry');
+const {
+  CircuitBreaker,
+  CircuitOpenError
+} = require('./utils/circuitBreaker');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -44,6 +48,13 @@ const dynamoClient = new DynamoDBClient({
 const dynamoDb = DynamoDBDocumentClient.from(dynamoClient);
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
+const publicDataCircuitBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  resetTimeoutMs: 30000
+});
+
+app.locals.publicDataCircuitBreaker = publicDataCircuitBreaker;
+
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
@@ -70,41 +81,44 @@ app.get('/api/v1/locations/search', async (req, res) => {
   try {
     const decodedKey = decodeURIComponent(RAW_KEY);
 
-    const response = await withRetry(
+    const response = await publicDataCircuitBreaker.execute(
       () =>
-        axios.get(
-          'https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList',
+        withRetry(
+          () =>
+            axios.get(
+              'https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList',
+              {
+                params: {
+                  serviceKey: decodedKey,
+                  pageNo: 1,
+                  numOfRows: 50,
+                  resultType: 'json'
+                },
+                timeout: 3000
+              }
+            ),
           {
-            params: {
-              serviceKey: decodedKey,
-              pageNo: 1,
-              numOfRows: 50,
-              resultType: 'json'
-            },
-            timeout: 3000
+            maxAttempts: 3,
+            baseDelayMs: 100,
+            maxDelayMs: 500,
+            jitterRatio: 0.2,
+            onRetry: ({
+              attempt,
+              nextAttempt,
+              delayMs,
+              status,
+              code
+            }) => {
+              logger.warn('public-data.retry', {
+                attempt,
+                nextAttempt,
+                delayMs,
+                status,
+                code
+              });
+            }
           }
-        ),
-      {
-        maxAttempts: 3,
-        baseDelayMs: 100,
-        maxDelayMs: 500,
-        jitterRatio: 0.2,
-        onRetry: ({
-          attempt,
-          nextAttempt,
-          delayMs,
-          status,
-          code
-        }) => {
-          logger.warn('public-data.retry', {
-            attempt,
-            nextAttempt,
-            delayMs,
-            status,
-            code
-          });
-        }
-      }
+        )
     );
 
     let rawItems = response.data?.getBgliCorsInfoList?.body?.items?.item || 
@@ -130,11 +144,19 @@ app.get('/api/v1/locations/search', async (req, res) => {
     }
     throw new Error('API 데이터 대기');
   } catch (error) {
-    logger.warn('public-data.fallback', {
-      status: error?.response?.status ?? null,
-      code: error?.code ?? null,
-      errorType: error?.name ?? 'Error'
-    });
+    const circuitOpen = error instanceof CircuitOpenError;
+
+    logger.warn(
+      circuitOpen
+        ? 'public-data.circuit-open'
+        : 'public-data.fallback',
+      {
+        status: error?.response?.status ?? null,
+        code: error?.code ?? null,
+        errorType: error?.name ?? 'Error',
+        circuitState: publicDataCircuitBreaker.getState()
+      }
+    );
 
     let filtered = realBusanCourses;
     if (query) filtered = filtered.filter(item => item.titleKo.includes(query) || item.locationKo.includes(query));
