@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const { requestObservability } = require('./middleware/requestObservability');
 const { logger } = require('./observability/logger');
 const { aiMetrics, MetricUnit } = require('./observability/metrics');
+const { withRetry } = require('./utils/retry');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -68,10 +69,43 @@ app.get('/api/v1/locations/search', async (req, res) => {
 
   try {
     const decodedKey = decodeURIComponent(RAW_KEY);
-    const response = await axios.get('https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList', {
-      params: { serviceKey: decodedKey, pageNo: 1, numOfRows: 50, resultType: 'json' },
-      timeout: 3000
-    });
+
+    const response = await withRetry(
+      () =>
+        axios.get(
+          'https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList',
+          {
+            params: {
+              serviceKey: decodedKey,
+              pageNo: 1,
+              numOfRows: 50,
+              resultType: 'json'
+            },
+            timeout: 3000
+          }
+        ),
+      {
+        maxAttempts: 3,
+        baseDelayMs: 100,
+        maxDelayMs: 500,
+        jitterRatio: 0.2,
+        onRetry: ({
+          attempt,
+          nextAttempt,
+          delayMs,
+          status,
+          code
+        }) => {
+          logger.warn('public-data.retry', {
+            attempt,
+            nextAttempt,
+            delayMs,
+            status,
+            code
+          });
+        }
+      }
+    );
 
     let rawItems = response.data?.getBgliCorsInfoList?.body?.items?.item || 
                    response.data?.getBgliCorsInfoList?.item || 
@@ -96,6 +130,12 @@ app.get('/api/v1/locations/search', async (req, res) => {
     }
     throw new Error('API 데이터 대기');
   } catch (error) {
+    logger.warn('public-data.fallback', {
+      status: error?.response?.status ?? null,
+      code: error?.code ?? null,
+      errorType: error?.name ?? 'Error'
+    });
+
     let filtered = realBusanCourses;
     if (query) filtered = filtered.filter(item => item.titleKo.includes(query) || item.locationKo.includes(query));
     if (status && status !== '전체') filtered = filtered.filter(item => item.status === status);
