@@ -44,7 +44,21 @@ jest.mock('../observability/metrics', () => ({
 }));
 
 const request = require('supertest');
+const jwt = require('jsonwebtoken');
 const app = require('../server');
+
+const authToken = jwt.sign(
+  { email: 'test@example.com' },
+  process.env.JWT_SECRET,
+  {
+    subject: 'test-user',
+    issuer: 'do-it-api',
+    expiresIn: '1h'
+  }
+);
+
+const withAuth = (req) =>
+  req.set('Authorization', `Bearer ${authToken}`);
 
 describe('AI recommendation endpoint', () => {
   const body = {
@@ -61,6 +75,17 @@ describe('AI recommendation endpoint', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    app.locals.aiRateLimiter.reset();
+  });
+
+  test('returns 401 without authentication and does not call Gemini', async () => {
+    const response = await request(app)
+      .post('/api/v1/recommend/ai')
+      .send(body);
+
+    expect(response.status).toBe(401);
+    expect(response.body.status).toBe('fail');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 
   test('returns recommendation when Gemini succeeds', async () => {
@@ -68,9 +93,9 @@ describe('AI recommendation endpoint', () => {
       text: 'This course is suitable for beginners.'
     });
 
-    const response = await request(app)
-      .post('/api/v1/recommend/ai')
-      .send(body);
+    const response = await withAuth(
+      request(app).post('/api/v1/recommend/ai')
+    ).send(body);
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -125,9 +150,9 @@ describe('AI recommendation endpoint', () => {
       new Error('Request timed out')
     );
 
-    const response = await request(app)
-      .post('/api/v1/recommend/ai')
-      .send(body);
+    const response = await withAuth(
+      request(app).post('/api/v1/recommend/ai')
+    ).send(body);
 
     expect(response.status).toBe(504);
     expect(response.body.status).toBe('fail');
@@ -146,9 +171,9 @@ describe('AI recommendation endpoint', () => {
       new Error('Gemini upstream failure')
     );
 
-    const response = await request(app)
-      .post('/api/v1/recommend/ai')
-      .send(body);
+    const response = await withAuth(
+      request(app).post('/api/v1/recommend/ai')
+    ).send(body);
 
     expect(response.status).toBe(502);
     expect(response.body.status).toBe('fail');
@@ -161,4 +186,29 @@ describe('AI recommendation endpoint', () => {
       })
     );
   });
+
+  test('rate limits authenticated users and does not call Gemini after the limit', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: 'Rate limit test response.'
+    });
+
+    for (let i = 0; i < 5; i += 1) {
+      const response = await withAuth(
+        request(app).post('/api/v1/recommend/ai')
+      ).send(body);
+
+      expect(response.status).toBe(200);
+    }
+
+    const blockedResponse = await withAuth(
+      request(app).post('/api/v1/recommend/ai')
+    ).send(body);
+
+    expect(blockedResponse.status).toBe(429);
+    expect(blockedResponse.body.status).toBe('fail');
+    expect(blockedResponse.headers['retry-after']).toBeDefined();
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(5);
+  });
+
 });

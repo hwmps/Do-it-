@@ -7,6 +7,8 @@ const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const { requestObservability } = require('./middleware/requestObservability');
+const { authenticateToken } = require('./middleware/authenticateToken');
+const { createUserRateLimiter } = require('./middleware/userRateLimiter');
 const { logger } = require('./observability/logger');
 const { aiMetrics, MetricUnit } = require('./observability/metrics');
 const { withRetry } = require('./utils/retry');
@@ -40,6 +42,13 @@ const io = new Server(server, {
 // 🤖 Gemini AI 클라이언트 설정
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const aiRateLimiter = createUserRateLimiter({
+  limit: 5,
+  windowMs: 60_000
+});
+
+app.locals.aiRateLimiter = aiRateLimiter;
 
 const dynamoClient = new DynamoDBClient({
   region: process.env.AWS_REGION
@@ -202,7 +211,11 @@ function publishAiRequestMetrics(durationMs, outcome) {
 }
 
 // 🤖 Gemini AI 맞춤 추천 엔드포인트
-app.post('/api/v1/recommend/ai', async (req, res) => {
+app.post(
+  '/api/v1/recommend/ai',
+  authenticateToken,
+  aiRateLimiter,
+  async (req, res) => {
   const { userPrompt, courses, lang = 'ko' } = req.body;
 
   if (
@@ -456,33 +469,6 @@ return res.json({
     });
   }
 });
-
-// 🔐 JWT 인증 미들웨어
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({
-      status: 'fail',
-      message: '인증 토큰이 필요합니다.'
-    });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-      issuer: 'do-it-api'
-    });
-
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      status: 'fail',
-      message: '유효하지 않거나 만료된 토큰입니다.'
-    });
-  }
-};
 
 // ❤️ 현재 사용자의 즐겨찾기 조회
 app.get('/api/v1/favorites', authenticateToken, async (req, res) => {

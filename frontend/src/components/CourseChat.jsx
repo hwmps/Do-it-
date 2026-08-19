@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-
-const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL ||
-  (process.env.NODE_ENV === 'production'
-    ? 'https://k5235hpbt6.execute-api.ap-southeast-2.amazonaws.com'
-    : 'http://localhost:5000');
+import { useNavigate } from 'react-router-dom';
+import {
+  authenticatedFetch,
+  SessionExpiredError
+} from '../api/apiClient';
 
 const translations = {
   ko: {
@@ -14,6 +13,8 @@ const translations = {
     send: 'AI에게 물어보기',
     loading: 'AI가 답변을 생각하고 있어요...',
     error: 'AI 답변을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    rateLimit: 'AI 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+    sessionExpired: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.',
     empty: '궁금한 내용을 입력해 주세요.',
     you: '나',
     ai: 'Do-it AI',
@@ -25,6 +26,8 @@ const translations = {
     send: 'Ask AI',
     loading: 'AI is thinking...',
     error: 'Failed to load the AI response. Please try again.',
+    rateLimit: 'Too many AI requests. Please try again shortly.',
+    sessionExpired: 'Your session has expired. Please sign in again.',
     empty: 'Please enter a question.',
     you: 'You',
     ai: 'Do-it AI',
@@ -33,6 +36,7 @@ const translations = {
 
 export default function CourseChat({ course, lang = 'ko' }) {
   const t = translations[lang] || translations.ko;
+  const navigate = useNavigate();
 
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -58,8 +62,8 @@ export default function CourseChat({ course, lang = 'ko' }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/recommend/ai`,
+      const response = await authenticatedFetch(
+        '/api/v1/recommend/ai',
         {
           method: 'POST',
           headers: {
@@ -75,6 +79,18 @@ export default function CourseChat({ course, lang = 'ko' }) {
 
       const data = await response.json();
 
+      if (response.status === 429) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            text: t.rateLimit,
+            isError: true,
+          },
+        ]);
+        return;
+      }
+
       if (!response.ok || data.status !== 'success') {
         throw new Error(data.message || 'AI request failed');
       }
@@ -86,6 +102,12 @@ export default function CourseChat({ course, lang = 'ko' }) {
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
+      if (error instanceof SessionExpiredError) {
+        alert(t.sessionExpired);
+        navigate('/login');
+        return;
+      }
+
       console.error('AI recommendation error:', error);
 
       setMessages((prev) => [
