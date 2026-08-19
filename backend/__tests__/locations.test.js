@@ -301,4 +301,55 @@ describe('location search resilience', () => {
     expect(fallbackMetrics).toHaveLength(4);
   });
 
+
+  test("filters and sorts courses by distance for a nearby query", async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        getBgliCorsInfoList: {
+          body: {
+            items: {
+              item: [
+                { crsNm: "Closest Course", operInstNm: "Center A", lat: "35.1795", lng: "129.0756" },
+                { crsNm: "Nearby Course", operInstNm: "Center B", lat: "35.2000", lng: "129.0900" },
+                { crsNm: "Far Course", operInstNm: "Center C", lat: "35.3000", lng: "129.2000" }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    const response = await request(app)
+      .get("/api/v1/locations/search?lat=35.1795&lng=129.0756&radiusKm=5");
+
+    expect(response.status).toBe(200);
+    expect(response.body.count).toBe(2);
+
+    expect(
+      response.body.data.map((course) => course.titleKo)
+    ).toEqual(["Closest Course", "Nearby Course"]);
+
+    expect(response.body.data[0].distanceKm)
+      .toEqual(expect.any(Number));
+
+    expect(response.body.data[0].distanceKm)
+      .toBeLessThan(response.body.data[1].distanceKm);
+  });
+
+  test("rejects an incomplete nearby query before calling upstream", async () => {
+    const response = await request(app)
+      .get("/api/v1/locations/search?lat=35.1795");
+
+    expect(response.status).toBe(400);
+
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        status: "error",
+        code: "INVALID_GEO_QUERY"
+      })
+    );
+
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
 });

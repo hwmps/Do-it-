@@ -12,6 +12,7 @@ const { createUserRateLimiter } = require('./middleware/userRateLimiter');
 const { logger } = require('./observability/logger');
 const { aiMetrics, publicDataMetrics, MetricUnit } = require('./observability/metrics');
 const { withRetry, isRetryableError } = require('./utils/retry');
+const { findNearbyCourses } = require('./utils/geo');
 const {
   CircuitBreaker,
   CircuitOpenError
@@ -89,7 +90,48 @@ app.get('/', (req, res) => {
 
 // ⚓ 부산 평생교육 강좌 연동 API
 app.get('/api/v1/locations/search', async (req, res) => {
-  const { query, status, target } = req.query;
+  const {
+    query,
+    status,
+    target,
+    lat,
+    lng,
+    radiusKm
+  } = req.query;
+
+  const hasLat = lat !== undefined;
+  const hasLng = lng !== undefined;
+  const hasRadius = radiusKm !== undefined;
+  const nearbyRequested = hasLat || hasLng || hasRadius;
+
+  const userLat = hasLat ? Number(lat) : null;
+  const userLng = hasLng ? Number(lng) : null;
+  const nearbyRadiusKm = hasRadius ? Number(radiusKm) : 5;
+
+  const invalidNearbyQuery =
+    nearbyRequested &&
+    (
+      !hasLat ||
+      !hasLng ||
+      !Number.isFinite(userLat) ||
+      !Number.isFinite(userLng) ||
+      userLat < -90 ||
+      userLat > 90 ||
+      userLng < -180 ||
+      userLng > 180 ||
+      !Number.isFinite(nearbyRadiusKm) ||
+      nearbyRadiusKm <= 0 ||
+      nearbyRadiusKm > 50
+    );
+
+  if (invalidNearbyQuery) {
+    return res.status(400).json({
+      status: 'error',
+      code: 'INVALID_GEO_QUERY',
+      message:
+        'lat and lng are required together; radiusKm must be between 0 and 50'
+    });
+  }
 
   const realBusanCourses = [
     { id: 1, titleKo: '부산 해운대구 주민을 위한 파이썬 코딩 기초', titleEn: 'Python Basics in Haeundae', locationKo: '부산 해운대구 평생학습관', locationEn: 'Haeundae Lifelong Learning Center, Busan', period: '2026.09.01 ~ 2026.11.30', status: '접수중', target: '중장년', lat: 35.1631, lng: 129.1636 },
@@ -163,8 +205,31 @@ app.get('/api/v1/locations/search', async (req, res) => {
         target: item.trget || '성인',
         lat: parseFloat(item.lat) || (35.1795 + ((index % 6) * 0.01)),
         lng: parseFloat(item.lng) || (129.0756 + ((index % 6) * 0.01)),
+        coordinatesEstimated: !(
+          Number.isFinite(Number.parseFloat(item.lat)) &&
+          Number.isFinite(Number.parseFloat(item.lng))
+        ),
       }));
-      return res.json({ status: 'success', count: formattedData.length, data: formattedData });
+
+      if (nearbyRequested) {
+        formattedData = findNearbyCourses(
+          formattedData,
+          {
+            lat: userLat,
+            lng: userLng,
+            radiusKm: nearbyRadiusKm
+          }
+        ).map((course) => ({
+          ...course,
+          distanceKm: Number(course.distanceKm.toFixed(3))
+        }));
+      }
+
+      return res.json({
+        status: 'success',
+        count: formattedData.length,
+        data: formattedData
+      });
     }
     throw new Error('API 데이터 대기');
   } catch (error) {
@@ -203,7 +268,25 @@ app.get('/api/v1/locations/search', async (req, res) => {
     if (status && status !== '전체') filtered = filtered.filter(item => item.status === status);
     if (target && target !== '전체') filtered = filtered.filter(item => item.target === target);
 
-    return res.json({ status: 'success', count: filtered.length, data: filtered });
+    if (nearbyRequested) {
+      filtered = findNearbyCourses(
+        filtered,
+        {
+          lat: userLat,
+          lng: userLng,
+          radiusKm: nearbyRadiusKm
+        }
+      ).map((course) => ({
+        ...course,
+        distanceKm: Number(course.distanceKm.toFixed(3))
+      }));
+    }
+
+    return res.json({
+      status: 'success',
+      count: filtered.length,
+      data: filtered
+    });
   }
 });
 
