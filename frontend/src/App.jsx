@@ -220,6 +220,7 @@ function MainPage({ lang, setLang }) {
   const [selectedId, setSelectedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   const [filteredResults, setFilteredResults] = useState([]);
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [userEmail, setUserEmail] = useState('');
 
@@ -346,7 +347,7 @@ function MainPage({ lang, setLang }) {
     alert(lang === 'en' ? 'Logged out.' : '로그아웃 되었습니다.');
   };
 
-  const fetchCoursesFromBackend = async () => {
+  const fetchCoursesFromBackend = async ({ lat, lng, radiusKm = 5 } = {}) => {
     setIsLoading(true);
 
     const busanMockData = [
@@ -357,12 +358,23 @@ function MainPage({ lang, setLang }) {
     ];
 
     try {
-      const queryParams = new URLSearchParams({ query: keyword, status: selectedStatus, target: selectedTarget });
+      const queryParams = new URLSearchParams({
+        query: keyword,
+        status: selectedStatus,
+        target: selectedTarget
+      });
+
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        queryParams.set('lat', String(lat));
+        queryParams.set('lng', String(lng));
+        queryParams.set('radiusKm', String(radiusKm));
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/v1/locations/search?${queryParams}`);
       if (!response.ok) throw new Error('백엔드 연동 실패');
       const data = await response.json();
 
-      if (data.status === 'success' && data.data && data.data.length > 0) {
+      if (data.status === 'success' && Array.isArray(data.data)) {
         let mapped = data.data.map(item => ({
           ...item,
           titleKo: item.titleKo || item.title || '',
@@ -396,8 +408,19 @@ function MainPage({ lang, setLang }) {
   };
 
   useEffect(() => {
-    fetchCoursesFromBackend();
-  }, [keyword, selectedStatus, selectedTarget, showFavoritesOnly, favorites]);
+    fetchCoursesFromBackend(
+      currentLocation
+        ? { ...currentLocation, radiusKm: 5 }
+        : {}
+    );
+  }, [
+    keyword,
+    selectedStatus,
+    selectedTarget,
+    showFavoritesOnly,
+    favorites,
+    currentLocation
+  ]);
 
   // 🗺️ 지도 안전 렌더링 로직
   useEffect(() => {
@@ -405,9 +428,39 @@ function MainPage({ lang, setLang }) {
       const container = document.getElementById('map');
       if (!container) return;
 
-      const options = { center: new window.kakao.maps.LatLng(35.1795, 129.0756), level: 7 };
+      const centerLat = currentLocation?.lat ?? 35.1795;
+      const centerLng = currentLocation?.lng ?? 129.0756;
+
+      const options = {
+        center: new window.kakao.maps.LatLng(centerLat, centerLng),
+        level: 7
+      };
       mapRef.current = new window.kakao.maps.Map(container, options);
       infoWindowRef.current = new window.kakao.maps.InfoWindow({ zIndex: 1 });
+
+      if (currentLocation) {
+        if (myLocationMarkerRef.current) {
+          myLocationMarkerRef.current.setMap(null);
+        }
+
+        const locPosition = new window.kakao.maps.LatLng(
+          currentLocation.lat,
+          currentLocation.lng
+        );
+
+        const marker = new window.kakao.maps.Marker({
+          position: locPosition,
+          map: mapRef.current
+        });
+
+        myLocationMarkerRef.current = marker;
+
+        infoWindowRef.current.setContent(
+          `<div style="padding:8px 12px;font-size:13px;font-weight:bold;color:#ea580c;display:flex;align-items:center;gap:6px;"><img src="/character7.png" style="width:22px;height:22px;"/>${t.myLocationTitle}</div>`
+        );
+
+        infoWindowRef.current.open(mapRef.current, marker);
+      }
 
       const map = mapRef.current;
       setTimeout(() => map.relayout(), 200);
@@ -447,7 +500,7 @@ function MainPage({ lang, setLang }) {
     };
 
     loadKakaoScript();
-  }, [filteredResults, lang]);
+  }, [filteredResults, lang, currentLocation]);
 
   const handleGetCurrentLocation = () => {
     if (!navigator.geolocation) return;
@@ -456,6 +509,8 @@ function MainPage({ lang, setLang }) {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
+
+        setCurrentLocation({ lat, lng });
 
         if (mapRef.current && window.kakao) {
           const locPosition = new window.kakao.maps.LatLng(lat, lng);
@@ -674,6 +729,18 @@ function MainPage({ lang, setLang }) {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {Number.isFinite(item.distanceKm) && (
+                            <span
+                              style={{
+                                fontSize: '13px',
+                                color: '#c2410c',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              📍 {item.distanceKm.toFixed(1)} km
+                            </span>
+                          )}
+
                           {isSelected && (
                             <span style={{ fontSize: '13px', color: '#f97316', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <img src="/character7.png" alt="selected pin" style={{ width: '24px', height: '24px' }} />
