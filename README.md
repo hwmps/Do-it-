@@ -44,6 +44,28 @@ flowchart LR
     Amplify --> Kakao[Kakao Maps API]
 ```
 
+### Resilient External API Path
+
+```text
+Public Education Data API
+          ↓
+      3s Timeout
+          ↓
+        Retry
+  ├── Exponential Backoff
+  ├── Jitter
+  └── Failure Classification
+          ↓
+   Circuit Breaker
+  ├── CLOSED
+  ├── OPEN
+  └── HALF_OPEN
+          ↓
+   Graceful Fallback
+```
+
+Retry and Circuit Breaker share the same failure-classification policy so transient upstream failures are handled consistently without treating ordinary client errors as dependency outages.
+
 ### Production Request Flow
 
 ```text
@@ -220,17 +242,19 @@ The map automatically moves to the user's location and displays a dedicated mark
 ### Health Check
 
 ```http
-GET /
+GET /api/v1/health
 ```
 
-Used to verify that the deployed Express application is running successfully inside AWS Lambda.
+Used to verify that the backend service is running successfully.
 
 Example response:
 
-```text
-🚀 Do-it Backend Server is Running On Render!
+```json
+{
+  "status": "ok",
+  "service": "do-it-backend"
+}
 ```
-
 ---
 
 ### Search Courses
@@ -306,16 +330,35 @@ Example response:
 
 ---
 
-### Mock Login
+### Google OAuth Authentication
 
 ```http
-POST /api/v1/auth/login
+POST /api/v1/auth/google
 ```
 
-The current authentication endpoint is implemented as a prototype login flow.
+The frontend authenticates users with Google OAuth. The backend verifies the Google credential and issues a signed Do-it JWT for authenticated API access.
 
-Future versions can replace this with persistent authentication using a managed identity or database-backed authentication system.
+Authentication flow:
 
+```text
+Google Login
+    ↓
+Google ID Token
+    ↓
+Backend Token Verification
+    ↓
+Signed Do-it JWT
+    ↓
+Authenticated API Requests
+```
+
+The current user can be verified through:
+
+```http
+GET /api/v1/auth/me
+```
+
+Protected endpoints validate the JWT before allowing access.
 ---
 
 ## 📁 Project Structure
@@ -610,15 +653,20 @@ These issues required debugging across both application code and cloud infrastru
 
 ### 6. Resilient External Data Loading
 
-External public APIs may:
+The course-discovery backend depends on an external public-data API, so transient upstream failures should not cascade into user-facing outages.
 
-- Time out
-- Return unexpected responses
-- Become temporarily unavailable
+The integration uses a layered resilience strategy:
 
-To prevent the entire user interface from failing, the application includes fallback educational program data.
+- **Timeouts** bound slow upstream requests
+- **Retries** use exponential backoff and jitter for retryable failures
+- **Shared failure classification** keeps Retry and Circuit Breaker behavior consistent across HTTP and network errors
+- **Circuit Breaker** transitions through `CLOSED`, `OPEN`, and `HALF_OPEN` states to stop repeatedly calling an unhealthy dependency
+- **Graceful fallback** keeps course discovery available when the upstream provider cannot be used
+- **Structured logs and CloudWatch EMF metrics** track retries, circuit openings, and fallback activations
 
-This keeps the core course discovery experience available even when the external data provider cannot be reached.
+Non-retryable client errors are excluded from Circuit Breaker failure counts, reducing false circuit trips.
+
+The resilience behavior is protected by automated regression tests covering retry policy, failure classification, state transitions, fallback behavior, and metric semantics.
 
 ---
 

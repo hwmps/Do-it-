@@ -7,8 +7,15 @@ const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const { requestObservability } = require('./middleware/requestObservability');
+const { authenticateToken } = require('./middleware/authenticateToken');
+const { createUserRateLimiter } = require('./middleware/userRateLimiter');
 const { logger } = require('./observability/logger');
-const { aiMetrics, MetricUnit } = require('./observability/metrics');
+const { aiMetrics, publicDataMetrics, MetricUnit } = require('./observability/metrics');
+const { withRetry, isRetryableError } = require('./utils/retry');
+const {
+  CircuitBreaker,
+  CircuitOpenError
+} = require('./utils/circuitBreaker');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -36,12 +43,37 @@ const io = new Server(server, {
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const aiRateLimiter = createUserRateLimiter({
+  limit: 5,
+  windowMs: 60_000
+});
+
+app.locals.aiRateLimiter = aiRateLimiter;
+
 const dynamoClient = new DynamoDBClient({
   region: process.env.AWS_REGION
 });
 
 const dynamoDb = DynamoDBDocumentClient.from(dynamoClient);
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
+
+const publicDataCircuitBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  resetTimeoutMs: 30000,
+  shouldCountFailure: isRetryableError
+});
+
+function incrementPublicDataMetric(name) {
+  publicDataMetrics.addMetric(
+    name,
+    MetricUnit.Count,
+    1
+  );
+
+  publicDataMetrics.publishStoredMetrics();
+}
+
+app.locals.publicDataCircuitBreaker = publicDataCircuitBreaker;
 
 // 🟢 [NEW] 서버 헬스 체크용 루트 엔드포인트
 app.get('/api/v1/health', (req, res) => {
@@ -68,10 +100,50 @@ app.get('/api/v1/locations/search', async (req, res) => {
 
   try {
     const decodedKey = decodeURIComponent(RAW_KEY);
-    const response = await axios.get('https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList', {
-      params: { serviceKey: decodedKey, pageNo: 1, numOfRows: 50, resultType: 'json' },
-      timeout: 3000
-    });
+
+    const response = await publicDataCircuitBreaker.execute(
+      () =>
+        withRetry(
+          () =>
+            axios.get(
+              'https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList',
+              {
+                params: {
+                  serviceKey: decodedKey,
+                  pageNo: 1,
+                  numOfRows: 50,
+                  resultType: 'json'
+                },
+                timeout: 3000
+              }
+            ),
+          {
+            maxAttempts: 3,
+            baseDelayMs: 100,
+            maxDelayMs: 500,
+            jitterRatio: 0.2,
+            onRetry: ({
+              attempt,
+              nextAttempt,
+              delayMs,
+              status,
+              code
+            }) => {
+              logger.warn('public-data.retry', {
+                attempt,
+                nextAttempt,
+                delayMs,
+                status,
+                code
+              });
+
+              incrementPublicDataMetric(
+                'PublicDataRetryCount'
+              );
+            }
+          }
+        )
+    );
 
     let rawItems = response.data?.getBgliCorsInfoList?.body?.items?.item || 
                    response.data?.getBgliCorsInfoList?.item || 
@@ -96,6 +168,36 @@ app.get('/api/v1/locations/search', async (req, res) => {
     }
     throw new Error('API 데이터 대기');
   } catch (error) {
+    const circuitOpen = error instanceof CircuitOpenError;
+    const circuitState = publicDataCircuitBreaker.getState();
+
+    const breakerOpenedByThisFailure =
+      !circuitOpen &&
+      circuitState === 'OPEN' &&
+      isRetryableError(error);
+
+    if (breakerOpenedByThisFailure) {
+      incrementPublicDataMetric(
+        'PublicDataCircuitBreakerOpenCount'
+      );
+    }
+
+    incrementPublicDataMetric(
+      'PublicDataFallbackCount'
+    );
+
+    logger.warn(
+      circuitOpen
+        ? 'public-data.circuit-open'
+        : 'public-data.fallback',
+      {
+        status: error?.response?.status ?? null,
+        code: error?.code ?? null,
+        errorType: error?.name ?? 'Error',
+        circuitState
+      }
+    );
+
     let filtered = realBusanCourses;
     if (query) filtered = filtered.filter(item => item.titleKo.includes(query) || item.locationKo.includes(query));
     if (status && status !== '전체') filtered = filtered.filter(item => item.status === status);
@@ -140,7 +242,11 @@ function publishAiRequestMetrics(durationMs, outcome) {
 }
 
 // 🤖 Gemini AI 맞춤 추천 엔드포인트
-app.post('/api/v1/recommend/ai', async (req, res) => {
+app.post(
+  '/api/v1/recommend/ai',
+  authenticateToken,
+  aiRateLimiter,
+  async (req, res) => {
   const { userPrompt, courses, lang = 'ko' } = req.body;
 
   if (
@@ -394,33 +500,6 @@ return res.json({
     });
   }
 });
-
-// 🔐 JWT 인증 미들웨어
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({
-      status: 'fail',
-      message: '인증 토큰이 필요합니다.'
-    });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-      issuer: 'do-it-api'
-    });
-
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      status: 'fail',
-      message: '유효하지 않거나 만료된 토큰입니다.'
-    });
-  }
-};
 
 // ❤️ 현재 사용자의 즐겨찾기 조회
 app.get('/api/v1/favorites', authenticateToken, async (req, res) => {

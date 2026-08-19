@@ -15,9 +15,11 @@ function createMetrics() {
 
 const metrics = createMetrics();
 const aiMetrics = createMetrics();
+const publicDataMetrics = createMetrics();
 
 module.exports = {
   metrics,
   aiMetrics,
+  publicDataMetrics,
   MetricUnit
 };
