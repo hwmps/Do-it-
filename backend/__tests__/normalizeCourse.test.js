@@ -1,36 +1,36 @@
-const {
-  normalizeCourse
-} = require("../domain/normalizeCourse");
+const { normalizeCourse } = require("../domain/normalizeCourse");
 
 describe("normalizeCourse", () => {
-  test("normalizes a public-data course into the canonical schema", () => {
+  test("normalizes the current Busan course API schema", () => {
     const result = normalizeCourse({
-      crsNm: "AI 데이터 분석",
-      operInstNm: "부산 평생학습관",
-      crsPeriod: "2026.09.01 ~ 2026.11.30",
-      trget: "성인",
-      lat: "35.1795",
-      lng: "129.0756"
+      lctreNm: "줌바댄스",
+      adres: "부산 부산진구 동평로406번길 38",
+      adresLa: "35.1721429382",
+      adresLo: "129.0687244213",
+      lctreBeginDttm: "2026-01-02",
+      lctreEndDttm: "2026-12-31",
+      progrsSttusNm: "접수중",
+      resveGroupNm: "부산진구 양정1동 주민자치회"
     });
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        source: "busan-public-data",
-        titleKo: "AI 데이터 분석",
-        locationKo: "부산 평생학습관",
-        period: "2026.09.01 ~ 2026.11.30",
-        target: "성인",
-        lat: 35.1795,
-        lng: 129.0756,
-        coordinateSource: "upstream"
-      })
-    );
+    expect(result).toEqual(expect.objectContaining({
+      source: "busan-public-data",
+      titleKo: "줌바댄스",
+      locationKo: "부산 부산진구 동평로406번길 38",
+      period: "2026-01-02 ~ 2026-12-31",
+      status: "접수중",
+      target: "전체",
+      lat: 35.1721429382,
+      lng: 129.0687244213,
+      coordinateSource: "upstream",
+      reservationGroupKo: "부산진구 양정1동 주민자치회"
+    }));
   });
 
-  test("does not fabricate coordinates when upstream coordinates are missing", () => {
+  test("does not fabricate missing coordinates", () => {
     const result = normalizeCourse({
-      crsNm: "Python 기초",
-      operInstNm: "부산 교육센터"
+      lctreNm: "Python 기초",
+      adres: "부산광역시"
     });
 
     expect(result.lat).toBeNull();
@@ -38,24 +38,29 @@ describe("normalizeCourse", () => {
     expect(result.coordinateSource).toBe("unknown");
   });
 
-  test("produces a stable sourceId for the same source record", () => {
-    const raw = {
-      crsNm: "Python 기초",
-      operInstNm: "부산 교육센터",
-      crsPeriod: "2026.09.01 ~ 2026.11.30"
-    };
+  test("keeps sourceId stable when mutable fields change", () => {
+    const first = normalizeCourse({
+      lctreNm: "Python 기초",
+      adres: "부산 교육센터",
+      lctreBeginDttm: "2026-09-01",
+      lctreEndDttm: "2026-11-30",
+      progrsSttusNm: "접수중"
+    });
 
-    const first = normalizeCourse(raw);
-    const second = normalizeCourse(raw);
+    const second = normalizeCourse({
+      lctreNm: "Python 기초",
+      adres: "부산 교육센터",
+      lctreBeginDttm: "2026-09-01",
+      lctreEndDttm: "2026-12-15",
+      progrsSttusNm: "마감"
+    });
 
     expect(first.sourceId).toBe(second.sourceId);
   });
 
-  test("rejects records without a usable title", () => {
-    expect(() =>
-      normalizeCourse({
-        operInstNm: "부산 교육센터"
-      })
-    ).toThrow("title");
+  test("rejects a record without a lecture name", () => {
+    expect(() => normalizeCourse({
+      adres: "부산광역시"
+    })).toThrow("title");
   });
 });

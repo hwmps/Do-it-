@@ -1,5 +1,5 @@
 const DEFAULT_URL =
-  "https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList";
+  "https://apis.data.go.kr/6260000/BusanCrsTrnngInfoService/getCrsTrnngInfo";
 
 class PublicDataClient {
   constructor({
@@ -34,7 +34,7 @@ class PublicDataClient {
       this.baseUrl,
       {
         params: {
-          serviceKey: this.apiKey,
+          ServiceKey: this.apiKey,
           pageNo,
           numOfRows,
           resultType: "json"
@@ -44,9 +44,9 @@ class PublicDataClient {
     );
 
     let items =
-      response.data?.getBgliCorsInfoList
+      response.data?.getCrsTrnngInfo
         ?.body?.items?.item ??
-      response.data?.getBgliCorsInfoList
+      response.data?.getCrsTrnngInfo
         ?.item ??
       response.data?.response
         ?.body?.items?.item ??

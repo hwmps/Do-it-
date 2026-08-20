@@ -67,17 +67,17 @@ describe('location search resilience', () => {
   test('returns public API data when upstream succeeds', async () => {
     axios.get.mockResolvedValue({
       data: {
-        getBgliCorsInfoList: {
+        getCrsTrnngInfo: {
           body: {
             items: {
               item: [
                 {
-                  crsNm: 'Public API Course',
-                  operInstNm: 'Busan Learning Center',
+                  lctreNm: 'Public API Course',
+                  adres: 'Busan Learning Center',
                   crsPeriod: '2026.09.01 ~ 2026.10.01',
                   trget: '성인',
-                  lat: '35.1',
-                  lng: '129.1'
+                  adresLa: '35.1',
+                  adresLo: '129.1'
                 }
               ]
             }
@@ -105,13 +105,13 @@ describe('location search resilience', () => {
       })
       .mockResolvedValueOnce({
         data: {
-          getBgliCorsInfoList: {
+          getCrsTrnngInfo: {
             body: {
               items: {
                 item: [
                   {
-                    crsNm: 'Recovered Course',
-                    operInstNm: 'Recovered Center'
+                    lctreNm: 'Recovered Course',
+                    adres: 'Recovered Center'
                   }
                 ]
               }
@@ -305,13 +305,13 @@ describe('location search resilience', () => {
   test("filters and sorts courses by distance for a nearby query", async () => {
     axios.get.mockResolvedValue({
       data: {
-        getBgliCorsInfoList: {
+        getCrsTrnngInfo: {
           body: {
             items: {
               item: [
-                { crsNm: "Closest Course", operInstNm: "Center A", lat: "35.1795", lng: "129.0756" },
-                { crsNm: "Nearby Course", operInstNm: "Center B", lat: "35.2000", lng: "129.0900" },
-                { crsNm: "Far Course", operInstNm: "Center C", lat: "35.3000", lng: "129.2000" }
+                { lctreNm: "Closest Course", adres: "Center A", adresLa: "35.1795", adresLo: "129.0756" },
+                { lctreNm: "Nearby Course", adres: "Center B", adresLa: "35.2000", adresLo: "129.0900" },
+                { lctreNm: "Far Course", adres: "Center C", adresLa: "35.3000", adresLo: "129.2000" }
               ]
             }
           }
@@ -353,33 +353,33 @@ describe('location search resilience', () => {
   });
 
 
-  test("applies query, status, and target filters when upstream succeeds", async () => {
+  test("applies query and status filters when upstream succeeds", async () => {
     axios.get.mockResolvedValue({
       data: {
-        getBgliCorsInfoList: {
+        getCrsTrnngInfo: {
           body: {
             items: {
               item: [
                 {
-                  crsNm: "AI Adult Course",
-                  operInstNm: "Center A",
-                  trget: "성인",
-                  lat: "35.16",
-                  lng: "129.07"
+                  lctreNm: "AI Open Course",
+                  adres: "Center A",
+                  progrsSttusNm: "접수중",
+                  adresLa: "35.16",
+                  adresLo: "129.07"
                 },
                 {
-                  crsNm: "AI Youth Course",
-                  operInstNm: "Center B",
-                  trget: "청소년",
-                  lat: "35.17",
-                  lng: "129.08"
+                  lctreNm: "AI Closed Course",
+                  adres: "Center B",
+                  progrsSttusNm: "마감",
+                  adresLa: "35.17",
+                  adresLo: "129.08"
                 },
                 {
-                  crsNm: "Python Adult Course",
-                  operInstNm: "Center C",
-                  trget: "성인",
-                  lat: "35.18",
-                  lng: "129.09"
+                  lctreNm: "Python Open Course",
+                  adres: "Center C",
+                  progrsSttusNm: "접수중",
+                  adresLa: "35.18",
+                  adresLo: "129.09"
                 }
               ]
             }
@@ -389,19 +389,20 @@ describe('location search resilience', () => {
     });
 
     const response = await request(app)
-      .get("/api/v1/locations/search?query=AI&status=접수중&target=성인");
+      .get("/api/v1/locations/search?query=AI&status=접수중");
 
     expect(response.status).toBe(200);
     expect(response.body.count).toBe(1);
     expect(response.body.data[0].titleKo)
-      .toBe("AI Adult Course");
+      .toBe("AI Open Course");
 
     const closedResponse = await request(app)
-      .get("/api/v1/locations/search?query=AI&status=마감&target=성인");
+      .get("/api/v1/locations/search?query=AI&status=마감");
 
     expect(closedResponse.status).toBe(200);
-    expect(closedResponse.body.count).toBe(0);
-    expect(closedResponse.body.data).toEqual([]);
+    expect(closedResponse.body.count).toBe(1);
+    expect(closedResponse.body.data[0].titleKo)
+      .toBe("AI Closed Course");
   });
 
   test("preserves the same search semantics when fallback data is used", async () => {

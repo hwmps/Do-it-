@@ -26,14 +26,14 @@ function parseCoordinate(value, min, max) {
 
 function createSourceId({
   title,
-  location,
-  period
+  address,
+  startDate
 }) {
   const identity = [
     SOURCE,
     title,
-    location,
-    period
+    address,
+    startDate
   ].join("|");
 
   return crypto
@@ -42,63 +42,88 @@ function createSourceId({
     .digest("hex");
 }
 
+function buildPeriod(startDate, endDate) {
+  if (startDate && endDate) {
+    return `${startDate} ~ ${endDate}`;
+  }
+
+  return startDate || endDate || "";
+}
+
 function normalizeCourse(raw) {
   const titleKo =
-    cleanString(raw.crsNm) ||
-    cleanString(raw.title);
+    cleanString(raw.lctreNm);
 
   if (!titleKo) {
     throw new Error("course title is required");
   }
 
   const locationKo =
-    cleanString(raw.operInstNm) ||
-    cleanString(raw.place);
+    cleanString(raw.adres);
 
-  const period =
-    cleanString(raw.crsPeriod);
+  const startDate =
+    cleanString(raw.lctreBeginDttm);
 
-  const lat =
-    parseCoordinate(raw.lat, -90, 90);
+  const endDate =
+    cleanString(raw.lctreEndDttm);
 
-  const lng =
-    parseCoordinate(raw.lng, -180, 180);
+  const parsedLat =
+    parseCoordinate(
+      raw.adresLa,
+      -90,
+      90
+    );
+
+  const parsedLng =
+    parseCoordinate(
+      raw.adresLo,
+      -180,
+      180
+    );
 
   const hasTrustedCoordinates =
-    lat !== null &&
-    lng !== null;
+    parsedLat !== null &&
+    parsedLng !== null;
 
   return {
     source: SOURCE,
 
     sourceId: createSourceId({
       title: titleKo,
-      location: locationKo,
-      period
+      address: locationKo,
+      startDate
     }),
 
     titleKo,
-    titleEn: titleKo,
+    titleEn: "",
 
     locationKo,
-    locationEn: locationKo,
+    locationEn: "",
 
-    period,
+    period:
+      buildPeriod(
+        startDate,
+        endDate
+      ),
 
     status:
-      cleanString(raw.status) ||
-      "접수중",
+      cleanString(
+        raw.progrsSttusNm
+      ) || "알 수 없음",
 
-    target:
-      cleanString(raw.trget) ||
-      "성인",
+    target: "전체",
+
+    reservationGroupKo:
+      cleanString(
+        raw.resveGroupNm
+      ),
 
     lat: hasTrustedCoordinates
-      ? lat
+      ? parsedLat
       : null,
 
     lng: hasTrustedCoordinates
-      ? lng
+      ? parsedLng
       : null,
 
     coordinateSource:

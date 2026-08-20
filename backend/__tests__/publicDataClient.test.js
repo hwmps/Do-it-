@@ -7,7 +7,7 @@ describe("PublicDataClient", () => {
     const httpClient = {
       get: jest.fn().mockResolvedValue({
         data: {
-          getBgliCorsInfoList: {
+          getCrsTrnngInfo: {
             body: {
               items: {
                 item: [
@@ -36,11 +36,11 @@ describe("PublicDataClient", () => {
     expect(httpClient.get)
       .toHaveBeenCalledWith(
         expect.stringContaining(
-          "getBgliCorsInfoList"
+          "getCrsTrnngInfo"
         ),
         expect.objectContaining({
           params: expect.objectContaining({
-            serviceKey: "encoded-key",
+            ServiceKey: "encoded-key",
             pageNo: 3,
             numOfRows: 100,
             resultType: "json"
@@ -87,7 +87,7 @@ describe("PublicDataClient", () => {
     const httpClient = {
       get: jest.fn().mockResolvedValue({
         data: {
-          getBgliCorsInfoList: {
+          getCrsTrnngInfo: {
             item: {
               crsNm: "Web Development"
             }
