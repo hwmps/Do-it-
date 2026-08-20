@@ -23,6 +23,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "4.21.2",
+    "fast-xml-parser": "^5.11.0",
     "google-auth-library": "^11.0.2",
     "h3-js": "^4.5.0",
     "jsonwebtoken": "^9.0.3",
