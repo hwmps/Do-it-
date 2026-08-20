@@ -85,11 +85,40 @@ describe("course ingestion job", () => {
     expect(command.input.Key.sourceId)
       .toEqual(expect.any(String));
 
-    expect(
-      Object.values(
-        command.input.ExpressionAttributeValues
-      )
-    ).toContain("Python 기초");
+    const names =
+      command.input.ExpressionAttributeNames;
+
+    const values =
+      command.input.ExpressionAttributeValues;
+
+    const storedFields = {};
+
+    for (const [placeholder, field] of
+      Object.entries(names)) {
+      const match =
+        placeholder.match(/^#field(\d+)$/);
+
+      if (match) {
+        storedFields[field] =
+          values[`:value${match[1]}`];
+      }
+    }
+
+    expect(storedFields).toEqual(
+      expect.objectContaining({
+        source: "busan-public-data",
+        title: "Python 기초",
+        location: "부산 교육센터",
+        countryCode: "KR",
+        region: "Busan",
+        language: "ko",
+        startAt: "2026-09-01",
+        endAt: "2026-11-30",
+        status: "접수중",
+        lat: 35.17,
+        lng: 129.07
+      })
+    );
 
     expect(log)
       .toHaveBeenCalledTimes(1);

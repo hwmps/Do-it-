@@ -10,8 +10,8 @@ const {
   PublicDataClient
 } = require("../clients/publicDataClient");
 const {
-  normalizeCourse
-} = require("../domain/normalizeCourse");
+  BusanCourseAdapter
+} = require("../adapters/busanCourseAdapter");
 const {
   CourseRepository
 } = require("../repositories/courseRepository");
@@ -75,10 +75,14 @@ async function runCourseIngestionJob({
       tableName
     });
 
+  const busanCourseAdapter =
+    new BusanCourseAdapter();
+
   const ingestionService =
     new CourseIngestionService({
       repository,
-      normalize: normalizeCourse
+      normalize: (raw) =>
+        busanCourseAdapter.normalize(raw)
     });
 
   const catalogIngestion =
