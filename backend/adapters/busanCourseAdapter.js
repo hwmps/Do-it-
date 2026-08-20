@@ -1,4 +1,7 @@
 const crypto = require("node:crypto");
+const {
+  validateCanonicalCourse
+} = require("../domain/canonicalCourse");
 
 const SOURCE = "busan-public-data";
 
@@ -78,7 +81,7 @@ class BusanCourseAdapter {
       parsedLat !== null &&
       parsedLng !== null;
 
-    return {
+    return validateCanonicalCourse({
       source: SOURCE,
 
       sourceId: createSourceId({
@@ -119,7 +122,7 @@ class BusanCourseAdapter {
         hasTrustedCoordinates
           ? "upstream"
           : "unknown"
-    };
+    });
   }
 }
 
