@@ -12,7 +12,7 @@ const { createUserRateLimiter } = require('./middleware/userRateLimiter');
 const { logger } = require('./observability/logger');
 const { aiMetrics, publicDataMetrics, MetricUnit } = require('./observability/metrics');
 const { withRetry, isRetryableError } = require('./utils/retry');
-const { findNearbyCourses } = require('./utils/geo');
+const { applyCourseSearch } = require('./utils/courseSearch');
 const {
   CircuitBreaker,
   CircuitOpenError
@@ -211,24 +211,23 @@ app.get('/api/v1/locations/search', async (req, res) => {
         ),
       }));
 
-      if (nearbyRequested) {
-        formattedData = findNearbyCourses(
-          formattedData,
-          {
-            lat: userLat,
-            lng: userLng,
-            radiusKm: nearbyRadiusKm
-          }
-        ).map((course) => ({
-          ...course,
-          distanceKm: Number(course.distanceKm.toFixed(3))
-        }));
-      }
+      const filteredData = applyCourseSearch(
+        formattedData,
+        {
+          query,
+          status,
+          target,
+          nearbyRequested,
+          lat: userLat,
+          lng: userLng,
+          radiusKm: nearbyRadiusKm
+        }
+      );
 
       return res.json({
         status: 'success',
-        count: formattedData.length,
-        data: formattedData
+        count: filteredData.length,
+        data: filteredData
       });
     }
     throw new Error('API 데이터 대기');
@@ -263,24 +262,18 @@ app.get('/api/v1/locations/search', async (req, res) => {
       }
     );
 
-    let filtered = realBusanCourses;
-    if (query) filtered = filtered.filter(item => item.titleKo.includes(query) || item.locationKo.includes(query));
-    if (status && status !== '전체') filtered = filtered.filter(item => item.status === status);
-    if (target && target !== '전체') filtered = filtered.filter(item => item.target === target);
-
-    if (nearbyRequested) {
-      filtered = findNearbyCourses(
-        filtered,
-        {
-          lat: userLat,
-          lng: userLng,
-          radiusKm: nearbyRadiusKm
-        }
-      ).map((course) => ({
-        ...course,
-        distanceKm: Number(course.distanceKm.toFixed(3))
-      }));
-    }
+    const filtered = applyCourseSearch(
+      realBusanCourses,
+      {
+        query,
+        status,
+        target,
+        nearbyRequested,
+        lat: userLat,
+        lng: userLng,
+        radiusKm: nearbyRadiusKm
+      }
+    );
 
     return res.json({
       status: 'success',

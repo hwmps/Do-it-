@@ -352,4 +352,75 @@ describe('location search resilience', () => {
     expect(axios.get).not.toHaveBeenCalled();
   });
 
+
+  test("applies query, status, and target filters when upstream succeeds", async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        getBgliCorsInfoList: {
+          body: {
+            items: {
+              item: [
+                {
+                  crsNm: "AI Adult Course",
+                  operInstNm: "Center A",
+                  trget: "성인",
+                  lat: "35.16",
+                  lng: "129.07"
+                },
+                {
+                  crsNm: "AI Youth Course",
+                  operInstNm: "Center B",
+                  trget: "청소년",
+                  lat: "35.17",
+                  lng: "129.08"
+                },
+                {
+                  crsNm: "Python Adult Course",
+                  operInstNm: "Center C",
+                  trget: "성인",
+                  lat: "35.18",
+                  lng: "129.09"
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    const response = await request(app)
+      .get("/api/v1/locations/search?query=AI&status=접수중&target=성인");
+
+    expect(response.status).toBe(200);
+    expect(response.body.count).toBe(1);
+    expect(response.body.data[0].titleKo)
+      .toBe("AI Adult Course");
+
+    const closedResponse = await request(app)
+      .get("/api/v1/locations/search?query=AI&status=마감&target=성인");
+
+    expect(closedResponse.status).toBe(200);
+    expect(closedResponse.body.count).toBe(0);
+    expect(closedResponse.body.data).toEqual([]);
+  });
+
+  test("preserves the same search semantics when fallback data is used", async () => {
+    axios.get.mockRejectedValue({
+      response: { status: 400 },
+      name: "AxiosError"
+    });
+
+    const response = await request(app)
+      .get("/api/v1/locations/search?query=파이썬&status=접수중&target=중장년");
+
+    expect(response.status).toBe(200);
+    expect(response.body.count).toBe(1);
+    expect(response.body.data[0].titleKo)
+      .toContain("파이썬");
+    expect(response.body.data[0].status)
+      .toBe("접수중");
+    expect(response.body.data[0].target)
+      .toBe("중장년");
+  });
+
 });
