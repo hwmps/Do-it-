@@ -3,6 +3,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
+const { PublicDataClient } = require('./clients/publicDataClient');
 const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
@@ -143,22 +144,19 @@ app.get('/api/v1/locations/search', async (req, res) => {
   try {
     const decodedKey = decodeURIComponent(RAW_KEY);
 
-    const response = await publicDataCircuitBreaker.execute(
+    const publicDataClient = new PublicDataClient({
+      httpClient: axios,
+      apiKey: decodedKey
+    });
+
+    const rawItems = await publicDataCircuitBreaker.execute(
       () =>
         withRetry(
           () =>
-            axios.get(
-              'https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList',
-              {
-                params: {
-                  serviceKey: decodedKey,
-                  pageNo: 1,
-                  numOfRows: 50,
-                  resultType: 'json'
-                },
-                timeout: 3000
-              }
-            ),
+            publicDataClient.fetchPage({
+              pageNo: 1,
+              numOfRows: 50
+            }),
           {
             maxAttempts: 3,
             baseDelayMs: 100,
@@ -186,12 +184,6 @@ app.get('/api/v1/locations/search', async (req, res) => {
           }
         )
     );
-
-    let rawItems = response.data?.getBgliCorsInfoList?.body?.items?.item || 
-                   response.data?.getBgliCorsInfoList?.item || 
-                   response.data?.response?.body?.items?.item || [];
-
-    if (!Array.isArray(rawItems) && rawItems) rawItems = [rawItems];
 
     if (rawItems.length > 0 && (rawItems[0].crsNm || rawItems[0].title)) {
       let formattedData = rawItems.map((item, index) => ({
