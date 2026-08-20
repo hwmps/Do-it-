@@ -70,6 +70,8 @@ describe("CourseCatalogIngestion", () => {
       pagesIngested: 2,
       received: 3,
       normalized: 3,
+      unique: 3,
+      duplicates: 0,
       upserted: 2,
       invalid: 0,
       failed: 1
@@ -103,19 +105,26 @@ describe("CourseCatalogIngestion", () => {
 
     await runner.run({ now });
 
-    expect(ingestionService.ingest)
-      .toHaveBeenNthCalledWith(
-        1,
-        [{ id: 1 }],
-        { now }
-      );
+    const firstOptions =
+      ingestionService.ingest.mock.calls[0][1];
 
-    expect(ingestionService.ingest)
-      .toHaveBeenNthCalledWith(
-        2,
-        [{ id: 2 }],
-        { now }
-      );
+    const secondOptions =
+      ingestionService.ingest.mock.calls[1][1];
+
+    expect(firstOptions.now).toBe(now);
+    expect(secondOptions.now).toBe(now);
+
+    expect(firstOptions.seenSourceIds)
+      .toBeInstanceOf(Set);
+
+    expect(secondOptions.seenSourceIds)
+      .toBe(firstOptions.seenSourceIds);
+
+    expect(firstOptions.persistedSourceIds)
+      .toBeInstanceOf(Set);
+
+    expect(secondOptions.persistedSourceIds)
+      .toBe(firstOptions.persistedSourceIds);
   });
 
   test("stops at maxPages even when the source keeps returning records", async () => {
@@ -165,4 +174,115 @@ describe("CourseCatalogIngestion", () => {
       runner.run({ pageSize: 0 })
     ).rejects.toThrow("pageSize");
   });
+
+  test("deduplicates the same sourceId across different pages", async () => {
+    const {
+      CourseIngestionService
+    } = require("../services/courseIngestionService");
+
+    const publicDataClient = {
+      fetchPage: jest.fn()
+        .mockResolvedValueOnce([
+          { sourceId: "course-a", titleKo: "Course A" }
+        ])
+        .mockResolvedValueOnce([
+          { sourceId: "course-a", titleKo: "Course A" },
+          { sourceId: "course-b", titleKo: "Course B" }
+        ])
+        .mockResolvedValueOnce([])
+    };
+
+    const repository = {
+      upsert: jest.fn().mockResolvedValue({})
+    };
+
+    const ingestionService =
+      new CourseIngestionService({
+        repository,
+        normalize: (record) => record
+      });
+
+    const runner =
+      new CourseCatalogIngestion({
+        publicDataClient,
+        ingestionService
+      });
+
+    const result = await runner.run({
+      pageSize: 2
+    });
+
+    expect(repository.upsert)
+      .toHaveBeenCalledTimes(2);
+
+    expect(result).toEqual({
+      pagesFetched: 3,
+      pagesIngested: 2,
+      received: 3,
+      normalized: 3,
+      unique: 2,
+      duplicates: 1,
+      upserted: 2,
+      invalid: 0,
+      failed: 0
+    });
+  });
+
+
+  test("retries a cross-page duplicate when the earlier write failed", async () => {
+    const {
+      CourseIngestionService
+    } = require("../services/courseIngestionService");
+
+    const publicDataClient = {
+      fetchPage: jest.fn()
+        .mockResolvedValueOnce([
+          { sourceId: "course-a", titleKo: "Course A" }
+        ])
+        .mockResolvedValueOnce([
+          { sourceId: "course-a", titleKo: "Course A" }
+        ])
+        .mockResolvedValueOnce([])
+    };
+
+    const repository = {
+      upsert: jest.fn()
+        .mockRejectedValueOnce(
+          new Error("temporary write failure")
+        )
+        .mockResolvedValueOnce({})
+    };
+
+    const ingestionService =
+      new CourseIngestionService({
+        repository,
+        normalize: (record) => record
+      });
+
+    const runner =
+      new CourseCatalogIngestion({
+        publicDataClient,
+        ingestionService
+      });
+
+    const result = await runner.run({
+      pageSize: 1
+    });
+
+    expect(repository.upsert)
+      .toHaveBeenCalledTimes(2);
+
+    expect(result).toEqual({
+      pagesFetched: 3,
+      pagesIngested: 2,
+      received: 2,
+      normalized: 2,
+      unique: 1,
+      duplicates: 1,
+      upserted: 1,
+      invalid: 0,
+      failed: 1
+    });
+  });
+
 });

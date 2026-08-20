@@ -172,4 +172,89 @@ describe("CourseIngestionService", () => {
       service.ingest(null)
     ).rejects.toThrow("array");
   });
+
+  test("skips duplicate sourceIds before writing to the repository", async () => {
+    const normalize = jest
+      .fn()
+      .mockImplementation((raw) => ({
+        sourceId: raw.sourceId,
+        titleKo: raw.title
+      }));
+
+    const repository = {
+      upsert: jest.fn().mockResolvedValue({})
+    };
+
+    const service = new CourseIngestionService({
+      repository,
+      normalize
+    });
+
+    const seenSourceIds = new Set();
+
+    const first = await service.ingest([
+      { sourceId: "course-1", title: "Python" },
+      { sourceId: "course-1", title: "Python" },
+      { sourceId: "course-2", title: "AI" }
+    ], {
+      seenSourceIds
+    });
+
+    expect(repository.upsert)
+      .toHaveBeenCalledTimes(2);
+
+    expect(first).toEqual({
+      received: 3,
+      normalized: 3,
+      unique: 2,
+      duplicates: 1,
+      upserted: 2,
+      invalid: 0,
+      failed: 0
+    });
+  });
+
+
+  test("retries a duplicate when the earlier write for that sourceId failed", async () => {
+    const normalize = jest.fn((raw) => ({
+      sourceId: raw.sourceId,
+      titleKo: raw.title
+    }));
+
+    const repository = {
+      upsert: jest.fn()
+        .mockRejectedValueOnce(new Error("temporary write failure"))
+        .mockResolvedValueOnce({})
+    };
+
+    const service = new CourseIngestionService({
+      repository,
+      normalize
+    });
+
+    const seenSourceIds = new Set();
+    const persistedSourceIds = new Set();
+
+    const result = await service.ingest([
+      { sourceId: "course-a", title: "Course A" },
+      { sourceId: "course-a", title: "Course A" }
+    ], {
+      seenSourceIds,
+      persistedSourceIds
+    });
+
+    expect(repository.upsert)
+      .toHaveBeenCalledTimes(2);
+
+    expect(result).toEqual({
+      received: 2,
+      normalized: 2,
+      unique: 1,
+      duplicates: 1,
+      upserted: 1,
+      invalid: 0,
+      failed: 1
+    });
+  });
+
 });

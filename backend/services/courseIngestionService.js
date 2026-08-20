@@ -22,7 +22,9 @@ class CourseIngestionService {
   async ingest(
     records,
     {
-      now = new Date().toISOString()
+      now = new Date().toISOString(),
+      seenSourceIds,
+      persistedSourceIds
     } = {}
   ) {
     if (!Array.isArray(records)) {
@@ -31,6 +33,19 @@ class CourseIngestionService {
       );
     }
 
+    const dedupeEnabled =
+      seenSourceIds instanceof Set;
+
+    const seen =
+      dedupeEnabled
+        ? seenSourceIds
+        : new Set();
+
+    const persisted =
+      persistedSourceIds instanceof Set
+        ? persistedSourceIds
+        : new Set();
+
     const summary = {
       received: records.length,
       normalized: 0,
@@ -38,6 +53,11 @@ class CourseIngestionService {
       invalid: 0,
       failed: 0
     };
+
+    if (dedupeEnabled) {
+      summary.unique = 0;
+      summary.duplicates = 0;
+    }
 
     for (const raw of records) {
       let course;
@@ -50,12 +70,35 @@ class CourseIngestionService {
         continue;
       }
 
+      const alreadySeen =
+        seen.has(course.sourceId);
+
+      if (alreadySeen) {
+        if (dedupeEnabled) {
+          summary.duplicates += 1;
+        }
+      } else {
+        seen.add(course.sourceId);
+
+        if (dedupeEnabled) {
+          summary.unique += 1;
+        }
+      }
+
+      if (
+        dedupeEnabled &&
+        persisted.has(course.sourceId)
+      ) {
+        continue;
+      }
+
       try {
         await this.repository.upsert(
           course,
           { now }
         );
 
+        persisted.add(course.sourceId);
         summary.upserted += 1;
       } catch {
         summary.failed += 1;

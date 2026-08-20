@@ -48,11 +48,16 @@ class CourseCatalogIngestion {
       );
     }
 
+    const seenSourceIds = new Set();
+    const persistedSourceIds = new Set();
+
     const summary = {
       pagesFetched: 0,
       pagesIngested: 0,
       received: 0,
       normalized: 0,
+      unique: 0,
+      duplicates: 0,
       upserted: 0,
       invalid: 0,
       failed: 0
@@ -78,12 +83,21 @@ class CourseCatalogIngestion {
       const pageSummary =
         await this.ingestionService.ingest(
           records,
-          { now }
+          {
+            now,
+            seenSourceIds,
+            persistedSourceIds
+          }
         );
 
       summary.pagesIngested += 1;
       summary.received += pageSummary.received;
       summary.normalized += pageSummary.normalized;
+      summary.unique +=
+        pageSummary.unique ??
+        pageSummary.normalized;
+      summary.duplicates +=
+        pageSummary.duplicates ?? 0;
       summary.upserted += pageSummary.upserted;
       summary.invalid += pageSummary.invalid;
       summary.failed += pageSummary.failed;

@@ -63,6 +63,8 @@ describe("course ingestion job", () => {
       pagesIngested: 1,
       received: 1,
       normalized: 1,
+      unique: 1,
+      duplicates: 0,
       upserted: 1,
       invalid: 0,
       failed: 0
