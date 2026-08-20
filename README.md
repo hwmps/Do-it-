@@ -86,6 +86,43 @@ Express REST API
 
 ---
 
+## 📐 Geospatial Search & Performance
+
+Do-it implements exact radius-based course discovery using the **Haversine formula**.
+
+### Measured Scaling Baseline
+
+Exact Haversine search was benchmarked with deterministic datasets from **1K to 1M geographic points**.
+
+| Dataset | Exact Haversine Avg | Exact Haversine P95 |
+|---:|---:|---:|
+| 100K | 24.41 ms | 51.24 ms |
+| 500K | 263.45 ms | 664.57 ms |
+| 1M | 395.26 ms | 599.30 ms |
+
+The measurements showed that full-scan exact search becomes a meaningful scalability bottleneck at larger dataset sizes.
+
+### H3 Spatial Index Evaluation
+
+An **H3 spatial index** was evaluated as a candidate-pruning layer while preserving exact Haversine checks for final radius filtering.
+
+At **1M points**, H3 resolution 9 achieved:
+
+- **28.45 ms average query latency**
+- **34.96 ms p95 latency**
+- **13.89x average speedup**
+- Candidate reduction from **1,000,000 points to 48,787 (4.88%)**
+- Exact result equivalence in randomized differential testing
+
+Correctness was validated across **150 randomized location/radius queries** against the exact Haversine implementation.
+
+### Production Decision
+
+The H3 implementation is intentionally **not wired into the current production request path**.
+
+The upstream public-data API currently returns at most 50 records per request, where maintaining a spatial index would add complexity without meaningful latency benefit. H3 is retained as a validated scalability path for a future persistent course catalog with substantially larger datasets.
+
+---
 ## ✨ Key Features
 
 ### 📍 Location-Based Course Discovery
@@ -190,11 +227,22 @@ The selected language dynamically changes:
 
 ---
 
-### 📍 Current Location
+### 📍 Current Location & Nearby Search
 
-Users can allow browser geolocation to display their current location on the Kakao map.
+Users can allow browser geolocation to search for learning opportunities around their current position.
 
-The map automatically moves to the user's location and displays a dedicated marker.
+The frontend sends latitude and longitude to the backend, where courses are filtered by radius and ranked by exact geographic distance.
+
+Supported behavior includes:
+
+- Browser geolocation
+- Current-location map center and marker
+- Radius-based backend search
+- Distance-ranked course results
+- Distance badges on course cards
+- Nearby-search state preserved across filters
+
+Courses without trustworthy geographic coordinates are excluded from proximity ranking.
 
 ---
 
