@@ -3,6 +3,8 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
+const { PublicDataClient } = require('./clients/publicDataClient');
+const { normalizeCourse } = require('./domain/normalizeCourse');
 const { GoogleGenAI } = require('@google/genai');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
@@ -143,22 +145,19 @@ app.get('/api/v1/locations/search', async (req, res) => {
   try {
     const decodedKey = decodeURIComponent(RAW_KEY);
 
-    const response = await publicDataCircuitBreaker.execute(
+    const publicDataClient = new PublicDataClient({
+      httpClient: axios,
+      apiKey: decodedKey
+    });
+
+    const rawItems = await publicDataCircuitBreaker.execute(
       () =>
         withRetry(
           () =>
-            axios.get(
-              'https://apis.data.go.kr/6260000/BgliCorsInfoService/getBgliCorsInfoList',
-              {
-                params: {
-                  serviceKey: decodedKey,
-                  pageNo: 1,
-                  numOfRows: 50,
-                  resultType: 'json'
-                },
-                timeout: 3000
-              }
-            ),
+            publicDataClient.fetchPage({
+              pageNo: 1,
+              numOfRows: 50
+            }),
           {
             maxAttempts: 3,
             baseDelayMs: 100,
@@ -187,30 +186,15 @@ app.get('/api/v1/locations/search', async (req, res) => {
         )
     );
 
-    let rawItems = response.data?.getBgliCorsInfoList?.body?.items?.item || 
-                   response.data?.getBgliCorsInfoList?.item || 
-                   response.data?.response?.body?.items?.item || [];
+    const formattedData = rawItems.flatMap((item) => {
+      try {
+        return [normalizeCourse(item)];
+      } catch {
+        return [];
+      }
+    });
 
-    if (!Array.isArray(rawItems) && rawItems) rawItems = [rawItems];
-
-    if (rawItems.length > 0 && (rawItems[0].crsNm || rawItems[0].title)) {
-      let formattedData = rawItems.map((item, index) => ({
-        id: index + 1,
-        titleKo: item.crsNm || item.title || '부산시 평생학습 교실',
-        titleEn: item.crsNm || 'Busan Lifelong Learning Course',
-        locationKo: item.operInstNm || item.place || '부산시 평생학습관',
-        locationEn: item.operInstNm || 'Busan Learning Center',
-        period: item.crsPeriod || '2026.09.01 ~ 2026.11.30',
-        status: '접수중',
-        target: item.trget || '성인',
-        lat: parseFloat(item.lat) || (35.1795 + ((index % 6) * 0.01)),
-        lng: parseFloat(item.lng) || (129.0756 + ((index % 6) * 0.01)),
-        coordinatesEstimated: !(
-          Number.isFinite(Number.parseFloat(item.lat)) &&
-          Number.isFinite(Number.parseFloat(item.lng))
-        ),
-      }));
-
+    if (formattedData.length > 0) {
       const filteredData = applyCourseSearch(
         formattedData,
         {
