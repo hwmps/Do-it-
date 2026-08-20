@@ -16,6 +16,9 @@ const {
   CourseSourceRegistry
 } = require("../sources/courseSourceRegistry");
 const {
+  BusanCourseSource
+} = require("../sources/busanCourseSource");
+const {
   CourseRepository
 } = require("../repositories/courseRepository");
 const {
@@ -83,19 +86,22 @@ async function runCourseIngestionJob({
       busan: new BusanCourseAdapter()
     });
 
+  const source =
+    new BusanCourseSource({
+      publicDataClient,
+      registry: sourceRegistry
+    });
+
   const ingestionService =
     new CourseIngestionService({
       repository,
       normalize: (raw) =>
-        sourceRegistry.normalize(
-          "busan",
-          raw
-        )
+        source.normalize(raw)
     });
 
   const catalogIngestion =
     new CourseCatalogIngestion({
-      publicDataClient,
+      source,
       ingestionService
     });
 

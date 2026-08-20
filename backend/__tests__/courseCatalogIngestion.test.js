@@ -4,7 +4,7 @@ const {
 
 describe("CourseCatalogIngestion", () => {
   test("fetches pages until an empty page and accumulates ingestion results", async () => {
-    const publicDataClient = {
+    const source = {
       fetchPage: jest.fn()
         .mockResolvedValueOnce([
           { id: 1 },
@@ -35,7 +35,7 @@ describe("CourseCatalogIngestion", () => {
     };
 
     const runner = new CourseCatalogIngestion({
-      publicDataClient,
+      source,
       ingestionService
     });
 
@@ -44,19 +44,19 @@ describe("CourseCatalogIngestion", () => {
       now: "2026-08-20T00:00:00.000Z"
     });
 
-    expect(publicDataClient.fetchPage)
+    expect(source.fetchPage)
       .toHaveBeenNthCalledWith(1, {
         pageNo: 1,
         numOfRows: 2
       });
 
-    expect(publicDataClient.fetchPage)
+    expect(source.fetchPage)
       .toHaveBeenNthCalledWith(2, {
         pageNo: 2,
         numOfRows: 2
       });
 
-    expect(publicDataClient.fetchPage)
+    expect(source.fetchPage)
       .toHaveBeenNthCalledWith(3, {
         pageNo: 3,
         numOfRows: 2
@@ -79,7 +79,7 @@ describe("CourseCatalogIngestion", () => {
   });
 
   test("uses one timestamp for the entire ingestion run", async () => {
-    const publicDataClient = {
+    const source = {
       fetchPage: jest.fn()
         .mockResolvedValueOnce([{ id: 1 }])
         .mockResolvedValueOnce([{ id: 2 }])
@@ -97,7 +97,7 @@ describe("CourseCatalogIngestion", () => {
     };
 
     const runner = new CourseCatalogIngestion({
-      publicDataClient,
+      source,
       ingestionService
     });
 
@@ -128,7 +128,7 @@ describe("CourseCatalogIngestion", () => {
   });
 
   test("stops at maxPages even when the source keeps returning records", async () => {
-    const publicDataClient = {
+    const source = {
       fetchPage: jest.fn()
         .mockResolvedValue([{ id: 1 }])
     };
@@ -144,7 +144,7 @@ describe("CourseCatalogIngestion", () => {
     };
 
     const runner = new CourseCatalogIngestion({
-      publicDataClient,
+      source,
       ingestionService
     });
 
@@ -152,7 +152,7 @@ describe("CourseCatalogIngestion", () => {
       maxPages: 2
     });
 
-    expect(publicDataClient.fetchPage)
+    expect(source.fetchPage)
       .toHaveBeenCalledTimes(2);
 
     expect(result.pagesFetched).toBe(2);
@@ -162,7 +162,7 @@ describe("CourseCatalogIngestion", () => {
 
   test("rejects an invalid page size", async () => {
     const runner = new CourseCatalogIngestion({
-      publicDataClient: {
+      source: {
         fetchPage: jest.fn()
       },
       ingestionService: {
@@ -180,7 +180,7 @@ describe("CourseCatalogIngestion", () => {
       CourseIngestionService
     } = require("../services/courseIngestionService");
 
-    const publicDataClient = {
+    const source = {
       fetchPage: jest.fn()
         .mockResolvedValueOnce([
           { sourceId: "course-a", titleKo: "Course A" }
@@ -204,7 +204,7 @@ describe("CourseCatalogIngestion", () => {
 
     const runner =
       new CourseCatalogIngestion({
-        publicDataClient,
+        source,
         ingestionService
       });
 
@@ -234,7 +234,7 @@ describe("CourseCatalogIngestion", () => {
       CourseIngestionService
     } = require("../services/courseIngestionService");
 
-    const publicDataClient = {
+    const source = {
       fetchPage: jest.fn()
         .mockResolvedValueOnce([
           { sourceId: "course-a", titleKo: "Course A" }
@@ -261,7 +261,7 @@ describe("CourseCatalogIngestion", () => {
 
     const runner =
       new CourseCatalogIngestion({
-        publicDataClient,
+        source,
         ingestionService
       });
 
