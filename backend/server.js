@@ -17,6 +17,8 @@ const { withRetry, isRetryableError } = require('./utils/retry');
 const { applyCourseSearch } = require('./utils/courseSearch');
 const { CourseRepository } = require('./repositories/courseRepository');
 const { CachedCourseRepository } = require("./repositories/cachedCourseRepository");
+const { SnapshotCourseRepository } = require("./repositories/snapshotCourseRepository");
+const { loadCatalogSnapshot } = require("./utils/catalogSnapshotLoader");
 const { CatalogSearchService } = require('./services/catalogSearchService');
 const { createCatalogSearchHandler } = require('./routes/catalogSearchHandler');
 const {
@@ -68,20 +70,52 @@ const courseTableName =
 
 let catalogSearchHandler = null;
 
-if (courseTableName) {
-  const courseRepository =
-    new CourseRepository({
-      client: dynamoDb,
-      tableName: courseTableName
-    });
+const catalogReadMode =
+  (process.env.CATALOG_READ_MODE || "dynamodb")
+    .trim()
+    .toLowerCase();
 
-  const cachedCourseRepository =
-    new CachedCourseRepository({
-      repository: courseRepository,
-      ttlMs: 300000,
-      maxEntries: 200
-    });
+if (
+  catalogReadMode === "snapshot" ||
+  courseTableName
+) {
+  let catalogRepository;
 
+  if (catalogReadMode === "snapshot") {
+    const snapshotPath =
+      process.env.CATALOG_SNAPSHOT_PATH;
+
+    if (!snapshotPath) {
+      throw new Error(
+        "CATALOG_SNAPSHOT_PATH is required in snapshot mode"
+      );
+    }
+
+    const snapshot =
+      loadCatalogSnapshot(
+        snapshotPath
+      );
+
+    catalogRepository =
+      new SnapshotCourseRepository({
+        courses:
+          snapshot.courses
+      });
+  } else {
+    const courseRepository =
+      new CourseRepository({
+        client: dynamoDb,
+        tableName: courseTableName
+      });
+
+    catalogRepository =
+      new CachedCourseRepository({
+        repository:
+          courseRepository,
+        ttlMs: 300000,
+        maxEntries: 200
+      });
+  }
 
   const parsedCatalogMaxSearchPages =
     Number.parseInt(
@@ -99,14 +133,16 @@ if (courseTableName) {
 
   const catalogSearchService =
     new CatalogSearchService({
-      repository: cachedCourseRepository,
+      repository:
+        catalogRepository,
       maxSearchPages:
         catalogMaxSearchPages
     });
 
   catalogSearchHandler =
     createCatalogSearchHandler({
-      service: catalogSearchService
+      service:
+        catalogSearchService
     });
 }
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
