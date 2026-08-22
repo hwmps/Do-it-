@@ -71,7 +71,8 @@ export async function searchCatalog({
   target,
   region,
   limit = 50,
-  cursor
+  cursor,
+  signal
 } = {}) {
   const params =
     new URLSearchParams();
@@ -114,7 +115,8 @@ export async function searchCatalog({
 
   const response =
     await fetch(
-      `${API_BASE_URL}/api/v1/catalog/search?${params.toString()}`
+      `${API_BASE_URL}/api/v1/catalog/search?${params.toString()}`,
+      { signal }
     );
 
   const body =

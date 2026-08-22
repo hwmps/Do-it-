@@ -218,6 +218,7 @@ function MainPage({ lang, setLang }) {
   const navigate = useNavigate();
 
   const [keyword, setKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('전체');
   const [selectedTarget, setSelectedTarget] = useState('전체');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -225,6 +226,7 @@ function MainPage({ lang, setLang }) {
 
   const [selectedId, setSelectedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
+  const [catalogResults, setCatalogResults] = useState([]);
   const [filteredResults, setFilteredResults] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -235,6 +237,15 @@ function MainPage({ lang, setLang }) {
   const infoWindowRef = useRef(null);
   const markersRef = useRef({});
   const myLocationMarkerRef = useRef(null);
+  const activeCatalogRequestRef = useRef(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedKeyword(keyword);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [keyword]);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem('userEmail');
@@ -355,15 +366,20 @@ function MainPage({ lang, setLang }) {
   };
 
   const fetchCoursesFromBackend = async () => {
+    activeCatalogRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeCatalogRequestRef.current = controller;
+
     setIsLoading(true);
     setCatalogError('');
 
     try {
       const result = await searchCatalog({
-        query: keyword,
+        query: debouncedKeyword,
         status: selectedStatus,
         target: selectedTarget,
-        limit: 50
+        limit: 50,
+        signal: controller.signal
       });
 
       let mapped = result.items.map((item) => {
@@ -403,26 +419,21 @@ function MainPage({ lang, setLang }) {
         };
       });
 
-      if (showFavoritesOnly) {
-        mapped =
-          mapped.filter(
-            (item) =>
-              favorites.includes(
-                String(item.id)
-              )
-          );
-      }
-
-      setFilteredResults(
+      setCatalogResults(
         mapped
       );
+
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+
       console.error(
         'Catalog search error:',
         error
       );
 
-      setFilteredResults([]);
+      setCatalogResults([]);
 
       setCatalogError(
         lang === 'en'
@@ -430,18 +441,33 @@ function MainPage({ lang, setLang }) {
           : '강좌 목록을 불러오지 못했습니다. 다시 시도해 주세요.'
       );
     } finally {
-      setIsLoading(false);
+      if (activeCatalogRequestRef.current === controller) {
+        activeCatalogRequestRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    return () => {
+      activeCatalogRequestRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const visibleResults = showFavoritesOnly
+      ? catalogResults.filter((item) => favorites.includes(String(item.id)))
+      : catalogResults;
+
+    setFilteredResults(visibleResults);
+  }, [catalogResults, showFavoritesOnly, favorites]);
+
+  useEffect(() => {
     fetchCoursesFromBackend();
   }, [
-    keyword,
+    debouncedKeyword,
     selectedStatus,
-    selectedTarget,
-    showFavoritesOnly,
-    favorites
+    selectedTarget
   ]);
 
   // 🗺️ 지도 안전 렌더링 로직

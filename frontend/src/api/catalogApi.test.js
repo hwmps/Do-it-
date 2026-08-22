@@ -173,4 +173,26 @@ describe('catalogApi', () => {
       CatalogApiError
     );
   });
+
+  test('passes AbortSignal to fetch', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'success',
+        count: 0,
+        data: [],
+        nextCursor: null
+      })
+    });
+
+    const controller = new AbortController();
+
+    await searchCatalog({
+      signal: controller.signal
+    });
+
+    expect(global.fetch.mock.calls[0][1]).toEqual({
+      signal: controller.signal
+    });
+  });
 });
