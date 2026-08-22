@@ -8,7 +8,8 @@
     "start": "node server.js",
     "ingest:courses": "node jobs/ingestCourses.js",
     "ingest:daegu:dry-run": "node jobs/dryRunDaeguCourses.js",
-    "ingest:daegu": "node jobs/ingestDaeguCourses.js"
+    "ingest:daegu": "node jobs/ingestDaeguCourses.js",
+    "catalog:snapshot": "node jobs/generateCatalogSnapshot.js"
   },
   "keywords": [],
   "author": "",
