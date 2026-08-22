@@ -10,8 +10,14 @@ const {
   PublicDataClient
 } = require("../clients/publicDataClient");
 const {
-  normalizeCourse
-} = require("../domain/normalizeCourse");
+  BusanCourseAdapter
+} = require("../adapters/busanCourseAdapter");
+const {
+  CourseSourceRegistry
+} = require("../sources/courseSourceRegistry");
+const {
+  BusanCourseSource
+} = require("../sources/busanCourseSource");
 const {
   CourseRepository
 } = require("../repositories/courseRepository");
@@ -75,15 +81,27 @@ async function runCourseIngestionJob({
       tableName
     });
 
+  const sourceRegistry =
+    new CourseSourceRegistry({
+      busan: new BusanCourseAdapter()
+    });
+
+  const source =
+    new BusanCourseSource({
+      publicDataClient,
+      registry: sourceRegistry
+    });
+
   const ingestionService =
     new CourseIngestionService({
       repository,
-      normalize: normalizeCourse
+      normalize: (raw) =>
+        source.normalize(raw)
     });
 
   const catalogIngestion =
     new CourseCatalogIngestion({
-      publicDataClient,
+      source,
       ingestionService
     });
 

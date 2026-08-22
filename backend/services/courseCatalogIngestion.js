@@ -1,14 +1,14 @@
 class CourseCatalogIngestion {
   constructor({
-    publicDataClient,
+    source,
     ingestionService
   }) {
     if (
-      !publicDataClient ||
-      typeof publicDataClient.fetchPage !== "function"
+      !source ||
+      typeof source.fetchPage !== "function"
     ) {
       throw new TypeError(
-        "publicDataClient with fetchPage() is required"
+        "source with fetchPage() is required"
       );
     }
 
@@ -21,7 +21,7 @@ class CourseCatalogIngestion {
       );
     }
 
-    this.publicDataClient = publicDataClient;
+    this.source = source;
     this.ingestionService = ingestionService;
   }
 
@@ -69,7 +69,7 @@ class CourseCatalogIngestion {
       pageNo += 1
     ) {
       const records =
-        await this.publicDataClient.fetchPage({
+        await this.source.fetchPage({
           pageNo,
           numOfRows: pageSize
         });
