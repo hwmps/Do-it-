@@ -87,6 +87,7 @@ function createCatalogSearchHandler({
       query,
       status,
       target,
+      region,
       cursor,
       limit
     } = req.query || {};
@@ -112,6 +113,7 @@ function createCatalogSearchHandler({
         query,
         status,
         target,
+        region,
         limit:
           parseLimit(limit),
         startKey

@@ -74,7 +74,14 @@ function presentCatalogCourse(course) {
       clean(course.countryCode),
 
     region:
-      clean(course.region),
+      clean(course.region) ||
+      (
+        clean(course.source) === "busan-public-data"
+          ? "Busan"
+          : clean(course.source) === "daegu-lifelong-learning"
+            ? "Daegu"
+            : null
+      ),
 
     language:
       clean(course.language),

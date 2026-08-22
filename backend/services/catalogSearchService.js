@@ -10,6 +10,7 @@ function hasActiveFilters({
   query,
   status,
   target,
+  region,
   nearbyRequested
 }) {
   const hasQuery =
@@ -24,10 +25,15 @@ function hasActiveFilters({
     Boolean(target) &&
     target !== "전체";
 
+  const hasRegion =
+    typeof region === "string" &&
+    region.trim().length > 0;
+
   return (
     hasQuery ||
     hasStatus ||
     hasTarget ||
+    hasRegion ||
     nearbyRequested
   );
 }
@@ -64,6 +70,7 @@ class CatalogSearchService {
     query,
     status,
     target,
+    region,
     nearbyRequested = false,
     lat,
     lng,
@@ -75,6 +82,7 @@ class CatalogSearchService {
       query,
       status,
       target,
+      region,
       nearbyRequested,
       lat,
       lng,
@@ -137,11 +145,27 @@ class CatalogSearchService {
           presentCatalogCourse
         );
 
-      const filteredCourses =
+      let filteredCourses =
         applyCourseSearch(
           presentedCourses,
           filters
         );
+
+      if (
+        typeof region === "string" &&
+        region.trim()
+      ) {
+        const expectedRegion =
+          region.trim().toLowerCase();
+
+        filteredCourses =
+          filteredCourses.filter(
+            (course) =>
+              typeof course.region === "string" &&
+              course.region.toLowerCase() ===
+                expectedRegion
+          );
+      }
 
       collected.push(
         ...filteredCourses
