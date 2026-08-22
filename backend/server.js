@@ -83,9 +83,25 @@ if (courseTableName) {
     });
 
 
+  const parsedCatalogMaxSearchPages =
+    Number.parseInt(
+      process.env.CATALOG_MAX_SEARCH_PAGES,
+      10
+    );
+
+  const catalogMaxSearchPages =
+    Number.isInteger(
+      parsedCatalogMaxSearchPages
+    ) &&
+    parsedCatalogMaxSearchPages > 0
+      ? parsedCatalogMaxSearchPages
+      : 3;
+
   const catalogSearchService =
     new CatalogSearchService({
-      repository: cachedCourseRepository
+      repository: cachedCourseRepository,
+      maxSearchPages:
+        catalogMaxSearchPages
     });
 
   catalogSearchHandler =
