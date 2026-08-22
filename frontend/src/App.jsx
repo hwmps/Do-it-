@@ -7,6 +7,10 @@ import {
   SessionExpiredError
 } from './api/apiClient';
 
+import {
+  searchCatalog
+} from './api/catalogApi';
+
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
   (process.env.NODE_ENV === 'production'
@@ -222,6 +226,7 @@ function MainPage({ lang, setLang }) {
   const [filteredResults, setFilteredResults] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
   const [userEmail, setUserEmail] = useState('');
 
   const mapRef = useRef(null);
@@ -347,79 +352,94 @@ function MainPage({ lang, setLang }) {
     alert(lang === 'en' ? 'Logged out.' : '로그아웃 되었습니다.');
   };
 
-  const fetchCoursesFromBackend = async ({ lat, lng, radiusKm = 5 } = {}) => {
+  const fetchCoursesFromBackend = async () => {
     setIsLoading(true);
-
-    const busanMockData = [
-      { id: 1, titleKo: '부산 해운대구 주민을 위한 파이썬 코딩 기초', titleEn: 'Senior Smartphone Class in Haeundae', locationKo: '부산 해운대구 평생학습관', locationEn: 'Haeundae Learning Center', period: '2026.09.01 ~ 2026.11.30', status: '접수중', target: '중장년', lat: 35.1631, lng: 129.1636 },
-      { id: 2, titleKo: '부산진구 청소년 웹개발 기초 (HTML/CSS)', titleEn: 'Youth Web Design Class in Busanjin', locationKo: '부산진구 청소년문화의집', locationEn: 'Busanjin Youth Center', period: '2026.08.15 ~ 2026.09.20', status: '마감', target: '청소년', lat: 35.1601, lng: 129.0578 },
-      { id: 3, titleKo: '부산 금정구 성인 대상 AI 데이터 분석 기초', titleEn: 'Real Estate & Asset Management in Geumjeong', locationKo: '부산 금정구 평생학습관', locationEn: 'Geumjeong Learning Center', period: '2026.10.01 ~ 2026.12.15', status: '접수중', target: '성인', lat: 35.2429, lng: 129.0924 },
-      { id: 4, titleKo: '부산 남구 중장년 디지털 소양 & 스마트폰 활용', titleEn: 'Senior Yoga & Posture in Nam-gu', locationKo: '부산 남구 대연동 복합커뮤니티센터', locationEn: 'Daeyeon Community Center', period: '2026.09.15 ~ 2026.11.15', status: '접수중', target: '중장년', lat: 35.1364, lng: 129.0844 }
-    ];
+    setCatalogError('');
 
     try {
-      const queryParams = new URLSearchParams({
+      const result = await searchCatalog({
         query: keyword,
         status: selectedStatus,
-        target: selectedTarget
+        target: selectedTarget,
+        limit: 50
       });
 
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        queryParams.set('lat', String(lat));
-        queryParams.set('lng', String(lng));
-        queryParams.set('radiusKm', String(radiusKm));
-      }
+      let mapped = result.items.map((item) => {
+        const id =
+          String(
+            item.id ??
+            item.sourceId
+          );
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/locations/search?${queryParams}`);
-      if (!response.ok) throw new Error('백엔드 연동 실패');
-      const data = await response.json();
-
-      if (data.status === 'success' && Array.isArray(data.data)) {
-        let mapped = data.data.map(item => ({
+        return {
           ...item,
-          titleKo: item.titleKo || item.title || '',
-          titleEn: item.titleEn || item.titleKo || '',
-          locationKo: item.locationKo || item.location || '',
-          locationEn: item.locationEn || item.locationKo || '',
-        }));
+          id,
+          sourceId:
+            item.sourceId || id,
 
-        if (showFavoritesOnly) {
-          mapped = mapped.filter(item => favorites.includes(String(item.id)));
-        }
-        setFilteredResults(mapped);
-      } else {
-        throw new Error('데이터 없음');
-      }
-    } catch (error) {
-      const filtered = busanMockData.filter(item => {
-        const title = lang === 'en' ? item.titleEn : item.titleKo;
-        const location = lang === 'en' ? item.locationEn : item.locationKo;
-        const matchKeyword = keyword === '' || title.toLowerCase().includes(keyword.toLowerCase()) || location.toLowerCase().includes(keyword.toLowerCase());
-        const matchStatus = selectedStatus === '전체' || item.status === selectedStatus;
-        const matchTarget = selectedTarget === '전체' || item.target === selectedTarget;
-        const matchFavorite = !showFavoritesOnly || favorites.includes(String(item.id));
+          titleKo:
+            item.titleKo ||
+            item.title ||
+            '',
 
-        return matchKeyword && matchStatus && matchTarget && matchFavorite;
+          titleEn:
+            item.titleEn ||
+            item.titleKo ||
+            item.title ||
+            '',
+
+          locationKo:
+            item.locationKo ||
+            item.location ||
+            '',
+
+          locationEn:
+            item.locationEn ||
+            item.locationKo ||
+            item.location ||
+            ''
+        };
       });
-      setFilteredResults(filtered);
+
+      if (showFavoritesOnly) {
+        mapped =
+          mapped.filter(
+            (item) =>
+              favorites.includes(
+                String(item.id)
+              )
+          );
+      }
+
+      setFilteredResults(
+        mapped
+      );
+    } catch (error) {
+      console.error(
+        'Catalog search error:',
+        error
+      );
+
+      setFilteredResults([]);
+
+      setCatalogError(
+        lang === 'en'
+          ? 'We could not load the course catalog. Please try again.'
+          : '강좌 목록을 불러오지 못했습니다. 다시 시도해 주세요.'
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCoursesFromBackend(
-      currentLocation
-        ? { ...currentLocation, radiusKm: 5 }
-        : {}
-    );
+    fetchCoursesFromBackend();
   }, [
     keyword,
     selectedStatus,
     selectedTarget,
     showFavoritesOnly,
-    favorites,
-    currentLocation
+    favorites
   ]);
 
   // 🗺️ 지도 안전 렌더링 로직
@@ -472,17 +492,41 @@ function MainPage({ lang, setLang }) {
 
       const bounds = new window.kakao.maps.LatLngBounds();
 
-      filteredResults.forEach((item) => {
-        const markerPosition = new window.kakao.maps.LatLng(item.lat, item.lng);
-        const marker = new window.kakao.maps.Marker({ position: markerPosition, map: map });
+      const mappableResults =
+        filteredResults.filter(
+          (item) =>
+            Number.isFinite(item.lat) &&
+            Number.isFinite(item.lng)
+        );
 
-        markersRef.current[item.id] = marker;
-        bounds.extend(markerPosition);
+      mappableResults.forEach((item) => {
+        const markerPosition =
+          new window.kakao.maps.LatLng(
+            item.lat,
+            item.lng
+          );
 
-        window.kakao.maps.event.addListener(marker, 'click', () => selectItem(item));
+        const marker =
+          new window.kakao.maps.Marker({
+            position: markerPosition,
+            map
+          });
+
+        markersRef.current[item.id] =
+          marker;
+
+        bounds.extend(
+          markerPosition
+        );
+
+        window.kakao.maps.event.addListener(
+          marker,
+          'click',
+          () => selectItem(item)
+        );
       });
 
-      if (filteredResults.length > 0) {
+      if (mappableResults.length > 0) {
         map.setBounds(bounds);
       }
     };
@@ -530,26 +574,85 @@ function MainPage({ lang, setLang }) {
 
   const selectItem = (item) => {
     setSelectedId(item.id);
-    if (mapRef.current && window.kakao) {
-      const moveLatLon = new window.kakao.maps.LatLng(item.lat, item.lng);
-      mapRef.current.panTo(moveLatLon);
 
-      const displayTitle = lang === 'en' ? item.titleEn : item.titleKo;
-      const displayLoc = lang === 'en' ? item.locationEn : item.locationKo;
-      const displayStatus = item.status === '접수중' ? t.open : t.closed;
-      const displayTarget = item.target === '중장년' ? t.senior : item.target === '청소년' ? t.youth : t.adult;
+    const hasCoordinates =
+      Number.isFinite(item.lat) &&
+      Number.isFinite(item.lng);
 
-      const content = `
-        <div style="padding:12px;font-family:sans-serif;min-width:180px;">
-          <div style="font-size:11px;color:${item.status === '접수중' ? '#ea580c' : '#991b1b'};font-weight:bold;margin-bottom:4px;">${displayStatus} · ${displayTarget}</div>
-          <div style="font-size:14px;font-weight:bold;color:#0f172a;margin-bottom:4px;">${displayTitle}</div>
-          <div style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:4px;"><img src="/character7.png" style="width:20px;height:20px;"/> ${displayLoc}</div>
-        </div>
-      `;
+    const marker =
+      markersRef.current[
+        item.id
+      ];
 
-      infoWindowRef.current.setContent(content);
-      infoWindowRef.current.open(mapRef.current, markersRef.current[item.id]);
+    if (
+      !hasCoordinates ||
+      !marker ||
+      !mapRef.current ||
+      !window.kakao
+    ) {
+      return;
     }
+
+    const moveLatLon =
+      new window.kakao.maps.LatLng(
+        item.lat,
+        item.lng
+      );
+
+    mapRef.current.panTo(
+      moveLatLon
+    );
+
+    const displayTitle =
+      lang === 'en'
+        ? item.titleEn
+        : item.titleKo;
+
+    const displayLoc =
+      lang === 'en'
+        ? item.locationEn
+        : item.locationKo;
+
+    const displayStatus =
+      item.status === '접수중'
+        ? t.open
+        : item.status === '마감'
+          ? t.closed
+          : item.status || '-';
+
+    const displayTarget =
+      item.target === '중장년'
+        ? t.senior
+        : item.target === '청소년'
+          ? t.youth
+          : item.target === '성인'
+            ? t.adult
+            : item.target || '-';
+
+    const content = `
+      <div style="padding:12px;font-family:sans-serif;min-width:180px;">
+        <div style="font-size:11px;color:#ea580c;font-weight:bold;margin-bottom:4px;">
+          ${displayStatus} · ${displayTarget}
+        </div>
+
+        <div style="font-size:14px;font-weight:bold;color:#0f172a;margin-bottom:4px;">
+          ${displayTitle}
+        </div>
+
+        <div style="font-size:12px;color:#64748b;">
+          ${displayLoc}
+        </div>
+      </div>
+    `;
+
+    infoWindowRef.current.setContent(
+      content
+    );
+
+    infoWindowRef.current.open(
+      mapRef.current,
+      marker
+    );
   };
 
   const resetFilters = () => {
@@ -671,7 +774,36 @@ function MainPage({ lang, setLang }) {
               {t.resultsHeader} ({filteredResults.length})
             </h2>
 
-            {isLoading ? (
+            {catalogError ? (
+              <div style={{ background: '#fff', borderRadius: '16px', padding: '40px 20px', textAlign: 'center', border: '1px solid #fecaca' }}>
+                <img
+                  src="/character.png"
+                  alt="catalog error"
+                  style={{ width: '80px', height: '80px', objectFit: 'contain', marginBottom: '12px' }}
+                />
+
+                <p style={{ fontSize: '16px', fontWeight: 'bold', color: '#991b1b', margin: '0 0 8px 0' }}>
+                  {catalogError}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => fetchCoursesFromBackend()}
+                  style={{
+                    backgroundColor: '#f97316',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {lang === 'en' ? 'Try Again' : '다시 시도'}
+                </button>
+              </div>
+            ) : isLoading ? (
               <div style={{ background: '#fff', borderRadius: '16px', padding: '40px 20px', textAlign: 'center', border: '1px solid #fed7aa' }}>
                 <p style={{ fontSize: '16px', color: '#ea580c' }}>{t.loading}</p>
               </div>
