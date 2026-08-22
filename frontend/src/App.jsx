@@ -221,6 +221,7 @@ function MainPage({ lang, setLang }) {
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('전체');
   const [selectedTarget, setSelectedTarget] = useState('전체');
+  const [selectedRegion, setSelectedRegion] = useState('전체');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [favorites, setFavorites] = useState([]);
 
@@ -378,6 +379,7 @@ function MainPage({ lang, setLang }) {
         query: debouncedKeyword,
         status: selectedStatus,
         target: selectedTarget,
+        region: selectedRegion,
         limit: 50,
         signal: controller.signal
       });
@@ -467,7 +469,8 @@ function MainPage({ lang, setLang }) {
   }, [
     debouncedKeyword,
     selectedStatus,
-    selectedTarget
+    selectedTarget,
+    selectedRegion
   ]);
 
   // 🗺️ 지도 안전 렌더링 로직
@@ -687,6 +690,7 @@ function MainPage({ lang, setLang }) {
     setKeyword('');
     setSelectedStatus('전체');
     setSelectedTarget('전체');
+    setSelectedRegion('전체');
     setShowFavoritesOnly(false);
     setSelectedId(null);
   };
@@ -767,6 +771,16 @@ function MainPage({ lang, setLang }) {
           </div>
 
           <div style={{ width: '1px', height: '20px', backgroundColor: '#fed7aa' }}></div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "14px", fontWeight: "bold", color: "#9a3412" }}>{lang === "en" ? "Region:" : "지역:"}</span>
+            {["전체", "Busan", "Daegu"].map((region) => (
+              <button key={region} onClick={() => setSelectedRegion(region)} style={{ padding: "6px 14px", borderRadius: "20px", border: "none", fontSize: "13px", fontWeight: "bold", cursor: "pointer", backgroundColor: selectedRegion === region ? "#f97316" : "#ffedd5", color: selectedRegion === region ? "#fff" : "#9a3412" }}>
+                {region === "전체" ? t.all : region}
+              </button>
+            ))}
+          </div>
+          <div style={{ width: "1px", height: "20px", backgroundColor: "#fed7aa" }}></div>
 
           <button
             onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
