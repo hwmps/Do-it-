@@ -11,6 +11,8 @@ import {
   searchCatalog
 } from './api/catalogApi';
 
+import { getCourseLifecycle, formatCoursePeriod, compareCoursesByLifecycle, getCourseSourceLabel } from './utils/coursePresentation';
+
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
   (process.env.NODE_ENV === 'production'
@@ -824,12 +826,16 @@ function MainPage({ lang, setLang }) {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {filteredResults.map((item) => {
+                {[...filteredResults].sort((a, b) => compareCoursesByLifecycle(a, b)).map((item) => {
                   const isSelected = selectedId === item.id;
                   const isHovered = hoveredId === item.id;
                   const isFav = favorites.includes(String(item.id));
                   const displayTitle = lang === 'en' ? item.titleEn : item.titleKo;
                   const displayLoc = lang === 'en' ? item.locationEn : item.locationKo;
+                  const lifecycle = getCourseLifecycle(item);
+                  const formattedPeriod = formatCoursePeriod(item);
+                  const sourceLabel = getCourseSourceLabel(item);
+                  const lifecycleLabel = lang === 'en' ? ({ current: 'Current', upcoming: 'Upcoming', past: 'Past', unknown: 'Date unknown' }[lifecycle]) : ({ current: '진행 중', upcoming: '예정', past: '종료', unknown: '날짜 미확인' }[lifecycle]);
 
                   return (
                     <div
@@ -851,12 +857,12 @@ function MainPage({ lang, setLang }) {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold', backgroundColor: item.status === '접수중' ? '#ffedd5' : '#fee2e2', color: item.status === '접수중' ? '#c2410c' : '#991b1b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <img src={item.status === '접수중' ? '/character4.png' : '/character3.png'} alt="status icon" style={{ width: '26px', height: '26px' }} />
-                            {item.status === '접수중' ? t.open : t.closed}
+                          <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold', backgroundColor: item.status === '접수중' ? '#ffedd5' : item.status === '마감' ? '#fee2e2' : '#f1f5f9', color: item.status === '접수중' ? '#c2410c' : item.status === '마감' ? '#991b1b' : '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <img src={item.status === '접수중' ? '/character4.png' : item.status === '마감' ? '/character3.png' : '/character5.png'} alt="status icon" style={{ width: '26px', height: '26px' }} />
+                            {item.status === '접수중' ? t.open : item.status === '마감' ? t.closed : (item.status || (lang === 'en' ? 'Unknown' : '미확인'))}
                           </span>
                           <span style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#fff7ed', color: '#ea580c', border: '1px solid #ffedd5' }}>
-                            {item.target === '중장년' ? t.senior : item.target === '청소년' ? t.youth : t.adult}
+                            {item.target === '중장년' ? t.senior : item.target === '청소년' ? t.youth : item.target === '성인' ? t.adult : (item.target || (lang === 'en' ? 'Unknown' : '미확인'))}
                           </span>
                         </div>
 
@@ -908,12 +914,16 @@ function MainPage({ lang, setLang }) {
                       </div>
 
                       <h3 style={{ fontSize: '19px', color: '#7c2d12', marginBottom: '10px', marginTop: '14px', paddingRight: '20px', fontWeight: 'bold' }}>{displayTitle}</h3>
+                      <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                        <span style={{ padding: '4px 9px', borderRadius: '999px', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}>{lifecycleLabel}</span>
+                        <span style={{ padding: '4px 9px', borderRadius: '999px', fontSize: '12px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}>{sourceLabel}</span>
+                      </div>
                       
                       <p style={{ fontSize: '14px', color: '#9a3412', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <img src="/character7.png" alt="location pin" style={{ width: '26px', height: '26px' }} />
                         {displayLoc}
                       </p>
-                      <p style={{ fontSize: '14px', color: '#c2410c', margin: '0 0 12px 0' }}>📅 {item.period}</p>
+                      {formattedPeriod && (<p style={{ fontSize: '14px', color: '#c2410c', margin: '0 0 12px 0' }}>📅 {formattedPeriod}</p>)}
 
                       {/* 💬 lang={lang} 전달로 언어 실시간 연동 */}
                       {isSelected && (
