@@ -85,6 +85,46 @@ Express REST API
 ```
 
 ---
+## 🔄 Multi-Source Course Ingestion
+
+Do-it ingests course data from heterogeneous public-data providers through a shared canonical pipeline instead of coupling the application to a single upstream schema.
+
+The current implementation integrates two real providers:
+
+- **Busan Public Data API** — JSON
+- **Daegu Lifelong Learning API** — XML
+
+Each provider owns only its source-specific fetching and normalization logic. After normalization, both providers reuse the same ingestion, deduplication, validation, and persistence core.
+
+```text
+Busan JSON API                         Daegu XML API
+      │                                      │
+      ▼                                      ▼
+PublicDataClient                  DaeguPublicDataClient
+      │                                      │
+      ▼                                      ▼
+BusanCourseSource                  DaeguCourseSource
+      │                                      │
+      ▼                                      ▼
+BusanCourseAdapter                DaeguCourseAdapter
+      │                                      │
+      └──────────────┬───────────────────────┘
+                     ▼
+              Canonical Course
+                     │
+                     ▼
+           CourseCatalogIngestion
+                     │
+                     ▼
+           CourseIngestionService
+                     │
+                     ▼
+              CourseRepository
+                     │
+                     ▼
+                  DynamoDB
+
+
 
 ## 📐 Geospatial Search & Performance
 
