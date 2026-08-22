@@ -15,6 +15,9 @@ const { logger } = require('./observability/logger');
 const { aiMetrics, publicDataMetrics, MetricUnit } = require('./observability/metrics');
 const { withRetry, isRetryableError } = require('./utils/retry');
 const { applyCourseSearch } = require('./utils/courseSearch');
+const { CourseRepository } = require('./repositories/courseRepository');
+const { CatalogSearchService } = require('./services/catalogSearchService');
+const { createCatalogSearchHandler } = require('./routes/catalogSearchHandler');
 const {
   CircuitBreaker,
   CircuitOpenError
@@ -58,6 +61,29 @@ const dynamoClient = new DynamoDBClient({
 });
 
 const dynamoDb = DynamoDBDocumentClient.from(dynamoClient);
+
+const courseTableName =
+  process.env.AWS_DYNAMODB_TABLE_COURSES;
+
+let catalogSearchHandler = null;
+
+if (courseTableName) {
+  const courseRepository =
+    new CourseRepository({
+      client: dynamoDb,
+      tableName: courseTableName
+    });
+
+  const catalogSearchService =
+    new CatalogSearchService({
+      repository: courseRepository
+    });
+
+  catalogSearchHandler =
+    createCatalogSearchHandler({
+      service: catalogSearchService
+    });
+}
 const RAW_KEY = process.env.PUBLIC_DATA_API_KEY || '';
 
 const publicDataCircuitBreaker = new CircuitBreaker({
@@ -84,6 +110,20 @@ app.get('/api/v1/health', (req, res) => {
     status: 'ok',
     service: 'do-it-backend'
   });
+});
+
+app.get('/api/v1/catalog/search', (req, res, next) => {
+  if (!catalogSearchHandler) {
+    return res.status(503).json({
+      status: 'error',
+      code: 'CATALOG_NOT_CONFIGURED',
+      message: 'course catalog is not configured'
+    });
+  }
+
+  return Promise.resolve(
+    catalogSearchHandler(req, res)
+  ).catch(next);
 });
 
 app.get('/', (req, res) => {
