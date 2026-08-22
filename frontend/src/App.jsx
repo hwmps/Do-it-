@@ -228,6 +228,9 @@ function MainPage({ lang, setLang }) {
   const [selectedId, setSelectedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   const [catalogResults, setCatalogResults] = useState([]);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState('');
   const [filteredResults, setFilteredResults] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -366,6 +369,20 @@ function MainPage({ lang, setLang }) {
     alert(lang === 'en' ? 'Logged out.' : '로그아웃 되었습니다.');
   };
 
+  const normalizeCatalogItem = (item) => {
+    const id = String(item.id ?? item.sourceId);
+
+    return {
+      ...item,
+      id,
+      sourceId: item.sourceId || id,
+      titleKo: item.titleKo || item.title || '',
+      titleEn: item.titleEn || item.titleKo || item.title || '',
+      locationKo: item.locationKo || item.location || '',
+      locationEn: item.locationEn || item.locationKo || item.location || ''
+    };
+  };
+
   const fetchCoursesFromBackend = async () => {
     activeCatalogRequestRef.current?.abort();
     const controller = new AbortController();
@@ -373,6 +390,9 @@ function MainPage({ lang, setLang }) {
 
     setIsLoading(true);
     setCatalogError('');
+    setNextCursor(null);
+    setLoadMoreError('');
+    setIsLoadingMore(false);
 
     try {
       const result = await searchCatalog({
@@ -384,46 +404,12 @@ function MainPage({ lang, setLang }) {
         signal: controller.signal
       });
 
-      let mapped = result.items.map((item) => {
-        const id =
-          String(
-            item.id ??
-            item.sourceId
-          );
-
-        return {
-          ...item,
-          id,
-          sourceId:
-            item.sourceId || id,
-
-          titleKo:
-            item.titleKo ||
-            item.title ||
-            '',
-
-          titleEn:
-            item.titleEn ||
-            item.titleKo ||
-            item.title ||
-            '',
-
-          locationKo:
-            item.locationKo ||
-            item.location ||
-            '',
-
-          locationEn:
-            item.locationEn ||
-            item.locationKo ||
-            item.location ||
-            ''
-        };
-      });
+      const mapped = result.items.map(normalizeCatalogItem);
 
       setCatalogResults(
         mapped
       );
+      setNextCursor(result.nextCursor || null);
 
     } catch (error) {
       if (error?.name === 'AbortError') {
@@ -436,6 +422,7 @@ function MainPage({ lang, setLang }) {
       );
 
       setCatalogResults([]);
+      setNextCursor(null);
 
       setCatalogError(
         lang === 'en'
@@ -450,9 +437,83 @@ function MainPage({ lang, setLang }) {
     }
   };
 
+  const loadMoreCourses = async () => {
+    if (!nextCursor || isLoadingMore) return;
+
+    activeCatalogRequestRef.current?.abort();
+
+    const controller = new AbortController();
+    activeCatalogRequestRef.current = controller;
+
+    setIsLoadingMore(true);
+    setLoadMoreError('');
+
+    try {
+      const result = await searchCatalog({
+        query: debouncedKeyword,
+        status: selectedStatus,
+        target: selectedTarget,
+        region: selectedRegion,
+        limit: 50,
+        cursor: nextCursor,
+        signal: controller.signal
+      });
+
+      const mapped = result.items.map(
+        normalizeCatalogItem
+      );
+      setCatalogResults((current) => {
+        const unique = new Map(
+          current.map((item) => [
+            String(item.id),
+            item
+          ])
+        );
+
+        mapped.forEach((item) => {
+          unique.set(
+            String(item.id),
+            item
+          );
+        });
+
+        return Array.from(
+          unique.values()
+        );
+      });
+
+      setNextCursor(
+        result.nextCursor || null
+      );    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+
+      console.error(
+        'Catalog load more error:',
+        error
+      );
+
+      setLoadMoreError(
+        lang === 'en'
+          ? 'Could not load more courses. Please try again.'
+          : '강좌를 더 불러오지 못했습니다. 다시 시도해 주세요.'
+      );
+    } finally {
+      if (
+        activeCatalogRequestRef.current === controller
+      ) {
+        activeCatalogRequestRef.current = null;
+        setIsLoadingMore(false);
+      }
+    }
+  };
+
   useEffect(() => {
     return () => {
-      activeCatalogRequestRef.current?.abort();
+      const activeRequest = activeCatalogRequestRef.current;
+      activeCatalogRequestRef.current = null;
+      activeRequest?.abort();
     };
   }, []);
 
@@ -849,7 +910,7 @@ function MainPage({ lang, setLang }) {
               <div style={{ background: '#fff', borderRadius: '16px', padding: '40px 20px', textAlign: 'center', border: '1px solid #fed7aa' }}>
                 <p style={{ fontSize: '16px', color: '#ea580c' }}>{t.loading}</p>
               </div>
-            ) : filteredResults.length === 0 ? (
+            ) : filteredResults.length === 0 && !nextCursor ? (
               <div style={{ background: '#fff', borderRadius: '16px', padding: '40px 20px', textAlign: 'center', border: '1px solid #fed7aa' }}>
                 <div style={{ marginBottom: '12px' }}>
                   <img src="/character.png" alt="no data character" style={{ width: '90px', height: '90px', objectFit: 'contain' }} />
@@ -974,6 +1035,42 @@ function MainPage({ lang, setLang }) {
                     </div>
                   );
                 })}
+                {loadMoreError && (
+                  <p
+                    style={{
+                      margin: '4px 0',
+                      textAlign: 'center',
+                      fontSize: '13px',
+                      color: '#991b1b'
+                    }}
+                  >
+                    {loadMoreError}
+                  </p>
+                )}
+
+                {nextCursor && (
+                  <button
+                    type="button"
+                    onClick={loadMoreCourses}
+                    disabled={isLoadingMore}
+                    style={{
+                      alignSelf: 'center',
+                      padding: '10px 22px',
+                      border: 'none',
+                      borderRadius: '10px',
+                      backgroundColor: '#f97316',
+                      color: '#fff',
+                      fontWeight: 'bold',
+                      cursor: isLoadingMore ? 'default' : 'pointer',
+                      opacity: isLoadingMore ? 0.65 : 1
+                    }}
+                  >
+                    {isLoadingMore
+                      ? (lang === 'en' ? 'Loading...' : '불러오는 중...')
+                      : (lang === 'en' ? 'Load More' : '더 보기')}
+                  </button>
+                )}
+
               </div>
             )}
           </div>
