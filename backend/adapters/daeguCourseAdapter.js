@@ -1,4 +1,4 @@
-const crypto = require("node:crypto");
+const crypto = require("crypto");
 
 const {
   validateCanonicalCourse
@@ -7,10 +7,45 @@ const {
 const SOURCE =
   "daegu-lifelong-learning";
 
-function cleanString(value) {
-  return typeof value === "string"
-    ? value.trim()
-    : "";
+function clean(value) {
+  if (
+    value === undefined ||
+    value === null
+  ) {
+    return null;
+  }
+
+  const result =
+    String(value).trim();
+
+  return result || null;
+}
+
+function normalizeDate(value) {
+  const date =
+    clean(value);
+
+  if (!date) {
+    return null;
+  }
+
+  const dottedDate =
+    date.match(
+      /^(\d{4})\.(\d{2})\.(\d{2})$/
+    );
+
+  if (dottedDate) {
+    const [
+      ,
+      year,
+      month,
+      day
+    ] = dottedDate;
+
+    return `${year}-${month}-${day}`;
+  }
+
+  return date;
 }
 
 function createSourceId({
@@ -19,54 +54,78 @@ function createSourceId({
   location,
   startAt
 }) {
-  const identity = upstreamId
-    ? [
-        SOURCE,
-        upstreamId
-      ]
-    : [
-        SOURCE,
-        title,
-        location,
-        startAt
-      ];
+  const identityParts =
+    upstreamId
+      ? [
+          SOURCE,
+          upstreamId
+        ]
+      : [
+          SOURCE,
+          title,
+          location,
+          startAt
+        ];
 
   return crypto
     .createHash("sha256")
-    .update(identity.join("|"))
+    .update(
+      identityParts.join("|")
+    )
     .digest("hex");
 }
 
 class DaeguCourseAdapter {
   normalize(raw) {
-    const title =
-      cleanString(raw.lec_title);
-
-    if (!title) {
-      throw new Error(
-        "course title is required"
+    if (
+      !raw ||
+      typeof raw !== "object"
+    ) {
+      throw new TypeError(
+        "raw Daegu course is required"
       );
     }
 
+    const upstreamId =
+      clean(raw.lec_id);
+
+    const title =
+      clean(raw.lec_title);
+
     const location =
-      cleanString(raw.impl_place);
+      clean(raw.impl_place);
 
     const startAt =
-      cleanString(raw.impl_start_dt);
+      normalizeDate(
+        raw.impl_start_dt
+      );
 
-    const upstreamId =
-      cleanString(raw.lec_id);
+    const endAt =
+      normalizeDate(
+        raw.impl_finish_dt
+      );
 
-    return validateCanonicalCourse({
-      source: SOURCE,
+    const registrationStartAt =
+      normalizeDate(
+        raw.impl_reg_start
+      );
 
-      sourceId: createSourceId({
+    const registrationEndAt =
+      normalizeDate(
+        raw.impl_reg_finish
+      );
+
+    const sourceId =
+      createSourceId({
         upstreamId,
         title,
         location,
         startAt
-      }),
+      });
 
+    const course = {
+      source: SOURCE,
+      sourceId,
       sourceRecordId:
         upstreamId,
 
@@ -78,56 +137,35 @@ class DaeguCourseAdapter {
       location,
 
       startAt,
-
-      endAt:
-        cleanString(
-          raw.impl_finish_dt
-        ),
+      endAt,
 
       startTime:
-        cleanString(
-          raw.start_time
-        ),
+        clean(raw.start_time),
 
       endTime:
-        cleanString(
-          raw.end_time
-        ),
+        clean(raw.end_time),
 
       status: "unknown",
 
       target:
-        cleanString(
+        clean(
           raw.lec_target_name
         ),
 
       daysOfWeek:
-        cleanString(
-          raw.day_week
-        ),
+        clean(raw.day_week),
 
       institution:
-        cleanString(
-          raw.ins_name
-        ),
+        clean(raw.ins_name),
 
-      registrationStartAt:
-        cleanString(
-          raw.impl_reg_start
-        ),
-
-      registrationEndAt:
-        cleanString(
-          raw.impl_reg_finish
-        ),
+      registrationStartAt,
+      registrationEndAt,
 
       receiptMethod:
-        cleanString(
-          raw.receipt
-        ),
+        clean(raw.receipt),
 
       sourceUrl:
-        cleanString(
+        clean(
           raw.lec_refer_url
         ),
 
@@ -136,7 +174,11 @@ class DaeguCourseAdapter {
 
       coordinateSource:
         "unknown"
-    });
+    };
+
+    return validateCanonicalCourse(
+      course
+    );
   }
 }
 

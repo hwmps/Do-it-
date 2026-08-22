@@ -8,8 +8,8 @@ describe("DaeguCourseAdapter", () => {
 
     const course = adapter.normalize({
       lec_title: "컴퓨터 기초",
-      impl_start_dt: "2026.08.12",
-      impl_finish_dt: "2026.09.04",
+      impl_start_dt: "2026-08-12",
+      impl_finish_dt: "2026-09-04",
       start_time: "09:00",
       end_time: "11:30",
       lec_target_name: "청년/직장인,성인",
@@ -19,8 +19,8 @@ describe("DaeguCourseAdapter", () => {
       lec_cost: "81510",
       ins_name: "칠금평생교육원",
       impl_info_tel: "053-781-3888",
-      impl_reg_start: "2026.05.18",
-      impl_reg_finish: "2026.08.11",
+      impl_reg_start: "2026-05-18",
+      impl_reg_finish: "2026-08-11",
       receipt: "온라인접수",
       lec_refer_url: "https://example.com/course"
     });
@@ -35,8 +35,8 @@ describe("DaeguCourseAdapter", () => {
         title: "컴퓨터 기초",
         location: "칠금평생교육원 3층 컨퍼런스룸",
 
-        startAt: "2026.08.12",
-        endAt: "2026.09.04",
+        startAt: "2026-08-12",
+        endAt: "2026-09-04",
 
         lat: null,
         lng: null,
@@ -45,8 +45,8 @@ describe("DaeguCourseAdapter", () => {
         target: "청년/직장인,성인",
         daysOfWeek: "수,금",
         institution: "칠금평생교육원",
-        registrationStartAt: "2026.05.18",
-        registrationEndAt: "2026.08.11",
+        registrationStartAt: "2026-05-18",
+        registrationEndAt: "2026-08-11",
         sourceUrl: "https://example.com/course"
       })
     );
@@ -61,15 +61,15 @@ describe("DaeguCourseAdapter", () => {
     const first = adapter.normalize({
       lec_title: "컴퓨터 기초",
       impl_place: "칠금평생교육원",
-      impl_start_dt: "2026.08.12",
-      impl_finish_dt: "2026.09.04",
+      impl_start_dt: "2026-08-12",
+      impl_finish_dt: "2026-09-04",
       lec_cost: "81510"
     });
 
     const second = adapter.normalize({
       lec_title: "컴퓨터 기초",
       impl_place: "칠금평생교육원",
-      impl_start_dt: "2026.08.12",
+      impl_start_dt: "2026-08-12",
       impl_finish_dt: "2026.09.10",
       lec_cost: "90000"
     });
