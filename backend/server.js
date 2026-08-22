@@ -16,6 +16,7 @@ const { aiMetrics, publicDataMetrics, MetricUnit } = require('./observability/me
 const { withRetry, isRetryableError } = require('./utils/retry');
 const { applyCourseSearch } = require('./utils/courseSearch');
 const { CourseRepository } = require('./repositories/courseRepository');
+const { CachedCourseRepository } = require("./repositories/cachedCourseRepository");
 const { CatalogSearchService } = require('./services/catalogSearchService');
 const { createCatalogSearchHandler } = require('./routes/catalogSearchHandler');
 const {
@@ -74,9 +75,17 @@ if (courseTableName) {
       tableName: courseTableName
     });
 
+  const cachedCourseRepository =
+    new CachedCourseRepository({
+      repository: courseRepository,
+      ttlMs: 300000,
+      maxEntries: 200
+    });
+
+
   const catalogSearchService =
     new CatalogSearchService({
-      repository: courseRepository
+      repository: cachedCourseRepository
     });
 
   catalogSearchHandler =
